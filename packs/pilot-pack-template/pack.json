@@ -1,0 +1,100 @@
+{
+  "name": "pilot-pack-template",
+  "version": "1.0.0",
+  "description": "Template for creating new PILOT packs with Kiro CLI integration",
+  "author": "PILOT Team",
+  "license": "MIT",
+  "pilot_version": ">=3.0.0",
+  "kiro_version": ">=1.0.0",
+  
+  "type": "feature",
+  "category": "template",
+  "tags": ["template", "example", "starter"],
+  
+  "dependencies": {
+    "required": [],
+    "optional": [],
+    "conflicts": []
+  },
+  
+  "provides": {
+    "agents": ["template-agent"],
+    "steering_files": ["template-knowledge.md"],
+    "hooks": ["template-hook"],
+    "mcp_servers": [],
+    "tools": ["template-tool"]
+  },
+  
+  "kiro_integration": {
+    "steering_path": ".kiro/steering/packs/pilot-pack-template",
+    "agent_configs": [
+      {
+        "source": "src/agents/template-agent.json",
+        "target": ".kiro/settings/agents/template-agent.json"
+      }
+    ],
+    "mcp_servers": [],
+    "hooks": [
+      {
+        "event": "user-prompt-submit",
+        "script": "src/hooks/template-hook.sh",
+        "priority": 5
+      }
+    ]
+  },
+  
+  "installation": {
+    "requirements": {
+      "commands": ["jq"],
+      "environment": {},
+      "platform": ["darwin", "linux", "win32"]
+    },
+    "steps": [
+      {
+        "type": "directory_create",
+        "action": "~/.pilot/packs/pilot-pack-template/cache",
+        "description": "Create cache directory"
+      },
+      {
+        "type": "file_create",
+        "action": ".kiro/steering/packs/pilot-pack-template/template-knowledge.md:source",
+        "description": "Install steering files"
+      }
+    ],
+    "verification": [
+      "test -f ~/.pilot/packs/pilot-pack-template/src/agents/template-agent.json",
+      "test -d .kiro/steering/packs/pilot-pack-template"
+    ]
+  },
+  
+  "health_checks": {
+    "enabled": true,
+    "interval": 3600,
+    "checks": [
+      {
+        "name": "pack_files",
+        "command": "test -d ~/.pilot/packs/pilot-pack-template/src",
+        "critical": true
+      }
+    ]
+  },
+  
+  "security": {
+    "permissions": {
+      "filesystem": {
+        "read": [".kiro/steering/**", "~/.pilot/packs/pilot-pack-template/**"],
+        "write": ["~/.pilot/packs/pilot-pack-template/cache/**"]
+      },
+      "network": {
+        "allowed_domains": []
+      },
+      "commands": {
+        "allowed": ["jq", "cat", "grep"]
+      }
+    },
+    "audit": {
+      "log_level": "info",
+      "sensitive_data": false
+    }
+  }
+}

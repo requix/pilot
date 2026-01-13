@@ -1,0 +1,73 @@
+{
+  "name": "pilot-core",
+  "version": "1.0.0",
+  "type": "feature",
+  "description": "PILOT core infrastructure with memory, intelligence, security, and monitoring - all implemented as bash hooks",
+
+  "metadata": {
+    "author": "PILOT Team",
+    "license": "MIT",
+    "repository": "https://github.com/pilot-project/pilot",
+    "tags": ["core", "infrastructure", "foundation", "essential"],
+    "target_audience": ["All Engineers", "DevOps", "Developers", "SREs"]
+  },
+
+  "dependencies": {
+    "kiro": ">=1.0.0"
+  },
+
+  "provides": {
+    "agents": ["pilot"],
+    "hooks": [
+      "agent-spawn",
+      "user-prompt-submit",
+      "pre-tool-use",
+      "post-tool-use",
+      "stop"
+    ],
+    "foundation_features": {
+      "memory": "Three-tier memory system (hot/warm/cold) with automatic archiving",
+      "intelligence": "Algorithm phase tracking and learning extraction",
+      "security": "Multi-tier command validation and sensitive file protection",
+      "monitoring": "Session metrics and tool usage tracking"
+    },
+    "steering_files": [
+      "pilot-core-knowledge.md"
+    ],
+    "resources": [
+      "the-algorithm.md",
+      "pilot-principles.md"
+    ]
+  },
+
+  "creates": {
+    "directories": [
+      "~/.kiro/pilot/identity",
+      "~/.kiro/pilot/resources",
+      "~/.kiro/pilot/memory/hot",
+      "~/.kiro/pilot/memory/warm",
+      "~/.kiro/pilot/memory/cold",
+      "~/.kiro/pilot/metrics",
+      "~/.kiro/pilot/packs",
+      "~/.kiro/pilot/.cache",
+      "~/.kiro/agents",
+      "~/.kiro/hooks/pilot",
+      "~/.kiro/steering/pilot"
+    ],
+    "files": [
+      "~/.kiro/pilot/config.json",
+      "~/.kiro/agents/pilot.json",
+      "~/.kiro/steering/pilot/pilot-core-knowledge.md"
+    ]
+  },
+
+  "installation": {
+    "ai_installable": true,
+    "method": "wizard",
+    "estimated_time": "1-2 minutes",
+    "requires_input": true,
+    "supports_update_mode": true,
+    "automatic_backup": true,
+    "post_install_message": "PILOT installed! Use with Kiro: Select 'pilot' agent in Kiro"
+  }
+}
