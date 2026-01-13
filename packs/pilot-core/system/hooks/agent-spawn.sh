@@ -68,9 +68,20 @@ load_warm_memory() {
 # ============================================================================
 # CACHE: Check for cached context
 # ============================================================================
+
+# Cross-platform stat for modification time
+get_mtime() {
+    stat -c "%Y" "$1" 2>/dev/null || stat -f "%m" "$1" 2>/dev/null || echo "0"
+}
+
+# Cross-platform md5 hash
+get_md5() {
+    md5sum 2>/dev/null | cut -d' ' -f1 || md5 2>/dev/null || echo "none"
+}
+
 generate_cache_key() {
     if [ -d "${IDENTITY_DIR}" ]; then
-        find "${IDENTITY_DIR}" -type f -name "*.md" -exec stat -f "%m" {} \; 2>/dev/null | sort | md5 2>/dev/null || echo "none"
+        find "${IDENTITY_DIR}" -type f -name "*.md" -exec sh -c 'stat -c "%Y" "$1" 2>/dev/null || stat -f "%m" "$1" 2>/dev/null' _ {} \; 2>/dev/null | sort | get_md5
     else
         echo "none"
     fi
@@ -81,7 +92,8 @@ CACHE_FILE="${CACHE_DIR}/agent-spawn-${CACHE_KEY}.txt"
 
 # Check if cached output exists and is recent (< 5 minutes)
 if [ -f "${CACHE_FILE}" ]; then
-    cache_age=$(($(date +%s) - $(stat -f "%m" "${CACHE_FILE}" 2>/dev/null || echo 0)))
+    cache_mtime=$(get_mtime "${CACHE_FILE}")
+    cache_age=$(($(date +%s) - ${cache_mtime}))
     if [ ${cache_age} -lt 300 ]; then
         cat "${CACHE_FILE}"
         exit 0
