@@ -1,117 +1,90 @@
 #!/usr/bin/env bash
-# post-tool-use.sh - Capture results for memory and learning extraction
-# Part of PILOT (Platform for Intelligent Lifecycle Operations and Tools)
-#
-# FOUNDATION FEATURES:
-# - Memory: Log tool results to hot memory
-# - Intelligence: Extract patterns for learning
-# - Monitoring: Update tool success/failure metrics
-#
-# INPUT: JSON from Kiro (first argument) with "tool", "result", "success" fields
-# OUTPUT: None (silent hook)
-
-set -euo pipefail
+# post-tool-use.sh - Capture tool results for memory and metrics
+# Part of PILOT - Fail-safe design (always exits 0)
 
 PILOT_HOME="${HOME}/.kiro/pilot"
-MEMORY_DIR="${PILOT_HOME}/memory"
-HOT_MEMORY="${MEMORY_DIR}/hot"
+HOT_MEMORY="${PILOT_HOME}/memory/hot"
 METRICS_DIR="${PILOT_HOME}/metrics"
+CACHE_DIR="${PILOT_HOME}/.cache"
+DEBUG_DIR="${PILOT_HOME}/debug"
 
 # Ensure directories exist
-mkdir -p "${HOT_MEMORY}" "${METRICS_DIR}"
+mkdir -p "$HOT_MEMORY" "$METRICS_DIR" "$DEBUG_DIR" 2>/dev/null || true
 
-# Get current timestamp
+# Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
+input_json=$(cat 2>/dev/null || echo "{}")
+
+# DEBUG: Log raw input to see what Kiro sends
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) post-tool-use: $input_json" >> "$DEBUG_DIR/raw-input.log" 2>/dev/null || true
+
+# Simple JSON extraction using jq (with fallback)
+get_json_field() {
+    local json="$1"
+    local field="$2"
+    local default="$3"
+    local val=""
+    if command -v jq >/dev/null 2>&1; then
+        val=$(echo "$json" | jq -r ".$field // empty" 2>/dev/null) || true
+    fi
+    echo "${val:-$default}"
+}
+
+# Extract tool name (Kiro sends tool_name at top level per docs)
+get_tool_name() {
+    local json="$1"
+    local tool=""
+    if command -v jq >/dev/null 2>&1; then
+        tool=$(echo "$json" | jq -r '.tool_name // .toolName // empty' 2>/dev/null) || true
+    fi
+    echo "${tool:-unknown}"
+}
+
+# Get session ID (from input or persisted file)
+get_session_id() {
+    local json="$1"
+    local sid=""
+    if command -v jq >/dev/null 2>&1; then
+        sid=$(echo "$json" | jq -r '.sessionId // .session_id // empty' 2>/dev/null) || true
+    fi
+    # Fallback to persisted session ID
+    if [ -z "$sid" ] && [ -f "$CACHE_DIR/current-session-id" ]; then
+        sid=$(cat "$CACHE_DIR/current-session-id" 2>/dev/null) || true
+    fi
+    echo "${sid:-unknown}"
+}
+
+# Extract fields
+TOOL_NAME=$(get_tool_name "$input_json")
+SESSION_ID=$(get_session_id "$input_json")
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Parse input JSON (Kiro provides this as first argument)
-input_json="${1:-{}}"
-
-# Extract tool info from JSON
-TOOL_NAME=$(echo "${input_json}" | grep -o '"tool"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"tool"[[:space:]]*:[[:space:]]*"//;s/"$//' || echo "unknown")
-
-# Extract success status
-TOOL_SUCCESS=$(echo "${input_json}" | grep -o '"success"[[:space:]]*:[[:space:]]*[^,}]*' 2>/dev/null | sed 's/"success"[[:space:]]*:[[:space:]]*//' || echo "true")
-
-# Extract result/output
-TOOL_OUTPUT=$(echo "${input_json}" | grep -o '"result"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"result"[[:space:]]*:[[:space:]]*"//;s/"$//' || echo "")
-
-# Extract session ID
-SESSION_ID=$(echo "${input_json}" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"sessionId"[[:space:]]*:[[:space:]]*"//;s/"$//' || echo "unknown")
+# Get success from tool_response.success (per Kiro docs)
+TOOL_SUCCESS="true"
+if command -v jq >/dev/null 2>&1; then
+    TOOL_SUCCESS=$(echo "$input_json" | jq -r '.tool_response.success // true' 2>/dev/null) || TOOL_SUCCESS="true"
+fi
 
 # Normalize success value
-case "${TOOL_SUCCESS}" in
-    true|1|"true")
-        TOOL_SUCCESS="true"
-        ;;
-    *)
-        TOOL_SUCCESS="false"
-        ;;
+case "$TOOL_SUCCESS" in
+    true|1|"true") TOOL_SUCCESS="true" ;;
+    *) TOOL_SUCCESS="false" ;;
 esac
 
-# ============================================================================
-# MEMORY: Log tool result to hot memory
-# ============================================================================
-TOOL_LOG="${HOT_MEMORY}/tool-usage.jsonl"
-echo "{\"timestamp\":\"${TIMESTAMP}\",\"session_id\":\"${SESSION_ID}\",\"tool\":\"${TOOL_NAME}\",\"success\":${TOOL_SUCCESS}}" >> "${TOOL_LOG}"
+# Log tool usage to hot memory
+TOOL_LOG="$HOT_MEMORY/tool-usage.jsonl"
+echo "{\"timestamp\":\"$TIMESTAMP\",\"session_id\":\"$SESSION_ID\",\"tool\":\"$TOOL_NAME\",\"success\":$TOOL_SUCCESS}" >> "$TOOL_LOG" 2>/dev/null || true
 
-# Rotate log if too large
-if [ -f "${TOOL_LOG}" ]; then
-    line_count=$(wc -l < "${TOOL_LOG}" 2>/dev/null | tr -d ' ' || echo 0)
-    if [ "${line_count}" -gt 10000 ]; then
-        tail -n 5000 "${TOOL_LOG}" > "${TOOL_LOG}.tmp"
-        mv "${TOOL_LOG}.tmp" "${TOOL_LOG}"
+# Log to metrics events
+echo "{\"timestamp\":\"$TIMESTAMP\",\"event\":\"tool_use\",\"tool\":\"$TOOL_NAME\",\"success\":$TOOL_SUCCESS}" >> "$METRICS_DIR/events.jsonl" 2>/dev/null || true
+
+# Track tool patterns (last 5 tools in session)
+if [ -f "$TOOL_LOG" ]; then
+    RECENT=$(grep "\"session_id\":\"$SESSION_ID\"" "$TOOL_LOG" 2>/dev/null | tail -5 | \
+             grep -o '"tool":"[^"]*"' | sed 's/"tool":"//;s/"$//' | tr '\n' ',' | sed 's/,$//' || true)
+    if [ -n "$RECENT" ]; then
+        echo "{\"timestamp\":\"$TIMESTAMP\",\"session_id\":\"$SESSION_ID\",\"pattern\":\"$RECENT\"}" >> "$HOT_MEMORY/tool-patterns.jsonl" 2>/dev/null || true
     fi
 fi
 
-# ============================================================================
-# MONITORING: Update metrics
-# ============================================================================
-EVENTS_LOG="${METRICS_DIR}/events.jsonl"
-echo "{\"timestamp\":\"${TIMESTAMP}\",\"event\":\"tool_use\",\"tool\":\"${TOOL_NAME}\",\"success\":${TOOL_SUCCESS}}" >> "${EVENTS_LOG}"
-
-# ============================================================================
-# INTELLIGENCE: Capture failures for learning
-# ============================================================================
-if [ "${TOOL_SUCCESS}" = "false" ]; then
-    FAILURES_LOG="${HOT_MEMORY}/failures.jsonl"
-    
-    # Escape output for JSON
-    OUTPUT_ESCAPED=$(echo "${TOOL_OUTPUT}" | head -c 500 | sed 's/\\/\\\\/g;s/"/\\"/g' | tr '\n' ' ')
-    
-    echo "{\"timestamp\":\"${TIMESTAMP}\",\"session_id\":\"${SESSION_ID}\",\"tool\":\"${TOOL_NAME}\",\"output\":\"${OUTPUT_ESCAPED}\"}" >> "${FAILURES_LOG}"
-    
-    # Rotate failures log
-    if [ -f "${FAILURES_LOG}" ]; then
-        line_count=$(wc -l < "${FAILURES_LOG}" 2>/dev/null | tr -d ' ' || echo 0)
-        if [ "${line_count}" -gt 500 ]; then
-            tail -n 250 "${FAILURES_LOG}" > "${FAILURES_LOG}.tmp"
-            mv "${FAILURES_LOG}.tmp" "${FAILURES_LOG}"
-        fi
-    fi
-fi
-
-# ============================================================================
-# INTELLIGENCE: Track tool usage patterns
-# ============================================================================
-PATTERNS_LOG="${HOT_MEMORY}/tool-patterns.jsonl"
-
-# Get recent tools for pattern detection
-if [ -f "${TOOL_LOG}" ]; then
-    RECENT_TOOLS=$(grep "\"session_id\":\"${SESSION_ID}\"" "${TOOL_LOG}" 2>/dev/null | tail -5 | grep -o '"tool":"[^"]*"' | sed 's/"tool":"//;s/"$//' | tr '\n' ',' | sed 's/,$//' || echo "")
-    
-    if [ -n "${RECENT_TOOLS}" ]; then
-        echo "{\"timestamp\":\"${TIMESTAMP}\",\"session_id\":\"${SESSION_ID}\",\"pattern\":\"${RECENT_TOOLS}\"}" >> "${PATTERNS_LOG}"
-    fi
-fi
-
-# Rotate patterns log
-if [ -f "${PATTERNS_LOG}" ]; then
-    line_count=$(wc -l < "${PATTERNS_LOG}" 2>/dev/null | tr -d ' ' || echo 0)
-    if [ "${line_count}" -gt 1000 ]; then
-        tail -n 500 "${PATTERNS_LOG}" > "${PATTERNS_LOG}.tmp"
-        mv "${PATTERNS_LOG}.tmp" "${PATTERNS_LOG}"
-    fi
-fi
-
-# No output (silent hook)
+# Silent hook - no output
 exit 0

@@ -1,199 +1,105 @@
 #!/usr/bin/env bash
-# stop.sh - Archive session, synthesize learnings, and generate metrics
-# Part of PILOT (Platform for Intelligent Lifecycle Operations and Tools)
-#
-# FOUNDATION FEATURES:
-# - Memory: Archive session to cold storage, update warm memory
-# - Intelligence: Extract learnings from session patterns
-# - Monitoring: Generate session metrics summary
-#
-# INPUT: JSON from Kiro (first argument) with session info
-# OUTPUT: Confirmation message to stdout
-
-set -euo pipefail
+# stop.sh - Archive session and generate metrics
+# Part of PILOT - Fail-safe design (always exits 0)
 
 PILOT_HOME="${HOME}/.kiro/pilot"
-MEMORY_DIR="${PILOT_HOME}/memory"
-HOT_MEMORY="${MEMORY_DIR}/hot"
-WARM_MEMORY="${MEMORY_DIR}/warm"
-COLD_MEMORY="${MEMORY_DIR}/cold"
+HOT_MEMORY="${PILOT_HOME}/memory/hot"
+WARM_MEMORY="${PILOT_HOME}/memory/warm"
+COLD_MEMORY="${PILOT_HOME}/memory/cold"
 METRICS_DIR="${PILOT_HOME}/metrics"
+CACHE_DIR="${PILOT_HOME}/.cache"
 
 # Ensure directories exist
-mkdir -p "${HOT_MEMORY}" "${WARM_MEMORY}" "${COLD_MEMORY}" "${METRICS_DIR}"
+mkdir -p "$HOT_MEMORY" "$WARM_MEMORY" "$COLD_MEMORY" "$METRICS_DIR" 2>/dev/null || true
 
-# Get timestamps
+# Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
+input_json=$(cat 2>/dev/null || echo "{}")
+
+# Timestamps
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 SESSION_DATE=$(date +"%Y-%m-%d")
 SESSION_TIME=$(date +"%H-%M-%S")
 
-# Parse input JSON (Kiro provides this as first argument)
-input_json="${1:-{}}"
-
-# Extract session ID
-SESSION_ID=$(echo "${input_json}" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"sessionId"[[:space:]]*:[[:space:]]*"//;s/"$//' || echo "unknown")
-
-# Archive directory for this session
-ARCHIVE_DIR="${COLD_MEMORY}/sessions/${SESSION_DATE}"
-mkdir -p "${ARCHIVE_DIR}"
-
-# ============================================================================
-# MONITORING: Calculate session metrics
-# ============================================================================
-calculate_metrics() {
-    local prompt_count=0
-    local tool_count=0
-    local tool_success=0
-    local tool_failures=0
-    local security_blocks=0
-    
-    # Count prompts
-    if [ -f "${HOT_MEMORY}/current-session.jsonl" ]; then
-        prompt_count=$(wc -l < "${HOT_MEMORY}/current-session.jsonl" 2>/dev/null | tr -d ' ' || echo 0)
+# Get session ID (from input or persisted file)
+get_session_id() {
+    local json="$1"
+    local sid=""
+    if command -v jq >/dev/null 2>&1; then
+        sid=$(echo "$json" | jq -r '.sessionId // .session_id // empty' 2>/dev/null) || true
     fi
-    
-    # Count tool usage
-    if [ -f "${HOT_MEMORY}/tool-usage.jsonl" ]; then
-        tool_count=$(grep -c "\"session_id\":\"${SESSION_ID}\"" "${HOT_MEMORY}/tool-usage.jsonl" 2>/dev/null || echo 0)
-        tool_success=$(grep "\"session_id\":\"${SESSION_ID}\"" "${HOT_MEMORY}/tool-usage.jsonl" 2>/dev/null | grep -c '"success":true' || echo 0)
-        tool_failures=$(grep "\"session_id\":\"${SESSION_ID}\"" "${HOT_MEMORY}/tool-usage.jsonl" 2>/dev/null | grep -c '"success":false' || echo 0)
+    if [ -z "$sid" ] && [ -f "$CACHE_DIR/current-session-id" ]; then
+        sid=$(cat "$CACHE_DIR/current-session-id" 2>/dev/null) || true
     fi
-    
-    # Count security blocks
-    if [ -f "${HOT_MEMORY}/security.log" ]; then
-        security_blocks=$(grep -c "BLOCKED" "${HOT_MEMORY}/security.log" 2>/dev/null || echo 0)
-    fi
-    
-    echo "{\"prompts\":${prompt_count},\"tools\":${tool_count},\"success\":${tool_success},\"failures\":${tool_failures},\"security_blocks\":${security_blocks}}"
+    echo "${sid:-unknown}"
 }
 
-METRICS=$(calculate_metrics)
+SESSION_ID=$(get_session_id "$input_json")
 
-# ============================================================================
-# INTELLIGENCE: Analyze algorithm phase usage
-# ============================================================================
+# Archive directory
+ARCHIVE_DIR="$COLD_MEMORY/sessions/$SESSION_DATE"
+mkdir -p "$ARCHIVE_DIR" 2>/dev/null || true
+
+# Calculate metrics
+calc_metrics() {
+    local prompts=0 tools=0 success=0 failures=0
+    
+    [ -f "$HOT_MEMORY/current-session.jsonl" ] && prompts=$(wc -l < "$HOT_MEMORY/current-session.jsonl" 2>/dev/null | tr -d ' ') || true
+    
+    if [ -f "$HOT_MEMORY/tool-usage.jsonl" ]; then
+        tools=$(grep -c "\"session_id\":\"$SESSION_ID\"" "$HOT_MEMORY/tool-usage.jsonl" 2>/dev/null) || true
+        success=$(grep "\"session_id\":\"$SESSION_ID\"" "$HOT_MEMORY/tool-usage.jsonl" 2>/dev/null | grep -c '"success":true') || true
+        failures=$(grep "\"session_id\":\"$SESSION_ID\"" "$HOT_MEMORY/tool-usage.jsonl" 2>/dev/null | grep -c '"success":false') || true
+    fi
+    
+    echo "{\"prompts\":${prompts:-0},\"tools\":${tools:-0},\"success\":${success:-0},\"failures\":${failures:-0}}"
+}
+
+# Analyze algorithm phases
 analyze_phases() {
-    if [ ! -f "${HOT_MEMORY}/algorithm-phases.jsonl" ]; then
-        echo "No phase data"
-        return
-    fi
+    [ ! -f "$HOT_MEMORY/algorithm-phases.jsonl" ] && echo "No phase data" && return
     
-    local observe=$(grep -c '"phase":"OBSERVE"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local think=$(grep -c '"phase":"THINK"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local plan=$(grep -c '"phase":"PLAN"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local build=$(grep -c '"phase":"BUILD"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local execute=$(grep -c '"phase":"EXECUTE"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local verify=$(grep -c '"phase":"VERIFY"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
-    local learn=$(grep -c '"phase":"LEARN"' "${HOT_MEMORY}/algorithm-phases.jsonl" 2>/dev/null || echo 0)
+    local o=$(grep -c '"phase":"OBSERVE"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || o=0
+    local t=$(grep -c '"phase":"THINK"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || t=0
+    local p=$(grep -c '"phase":"PLAN"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || p=0
+    local b=$(grep -c '"phase":"BUILD"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || b=0
+    local e=$(grep -c '"phase":"EXECUTE"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || e=0
+    local v=$(grep -c '"phase":"VERIFY"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || v=0
+    local l=$(grep -c '"phase":"LEARN"' "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null) || l=0
     
-    echo "O:${observe} T:${think} P:${plan} B:${build} E:${execute} V:${verify} L:${learn}"
+    echo "O:$o T:$t P:$p B:$b E:$e V:$v L:$l"
 }
 
-PHASE_ANALYSIS=$(analyze_phases)
+METRICS=$(calc_metrics)
+PHASES=$(analyze_phases)
 
-# ============================================================================
-# MEMORY: Create session summary
-# ============================================================================
-SUMMARY_FILE="${ARCHIVE_DIR}/summary-${SESSION_TIME}.md"
-{
-    echo "# Session: ${SESSION_DATE} ${SESSION_TIME}"
-    echo ""
-    echo "**ID:** ${SESSION_ID}"
-    echo "**Archived:** ${TIMESTAMP}"
-    echo ""
-    echo "## Metrics"
-    echo "\`\`\`"
-    echo "${METRICS}"
-    echo "\`\`\`"
-    echo ""
-    echo "## Algorithm Phases"
-    echo "${PHASE_ANALYSIS}"
-    echo ""
-    echo "---"
-    echo "*Generated by PILOT*"
-} > "${SUMMARY_FILE}"
+# Create session summary
+cat > "$ARCHIVE_DIR/summary-$SESSION_TIME.md" 2>/dev/null << EOF || true
+# Session: $SESSION_DATE $SESSION_TIME
 
-# ============================================================================
-# MEMORY: Archive session files
-# ============================================================================
+**ID:** $SESSION_ID
+**Archived:** $TIMESTAMP
 
-# Archive current session log
-if [ -f "${HOT_MEMORY}/current-session.jsonl" ] && [ -s "${HOT_MEMORY}/current-session.jsonl" ]; then
-    cp "${HOT_MEMORY}/current-session.jsonl" "${ARCHIVE_DIR}/session-${SESSION_TIME}.jsonl"
-    > "${HOT_MEMORY}/current-session.jsonl"
-fi
+## Metrics
+\`\`\`
+$METRICS
+\`\`\`
 
-# Archive tool usage (session entries only)
-if [ -f "${HOT_MEMORY}/tool-usage.jsonl" ]; then
-    grep "\"session_id\":\"${SESSION_ID}\"" "${HOT_MEMORY}/tool-usage.jsonl" > "${ARCHIVE_DIR}/tools-${SESSION_TIME}.jsonl" 2>/dev/null || true
-fi
+## Algorithm Phases
+$PHASES
 
-# Archive security log
-if [ -f "${HOT_MEMORY}/security.log" ] && [ -s "${HOT_MEMORY}/security.log" ]; then
-    cp "${HOT_MEMORY}/security.log" "${ARCHIVE_DIR}/security-${SESSION_TIME}.log"
-fi
-
-# Archive algorithm phases
-if [ -f "${HOT_MEMORY}/algorithm-phases.jsonl" ]; then
-    grep "\"session_id\":\"${SESSION_ID}\"" "${HOT_MEMORY}/algorithm-phases.jsonl" > "${ARCHIVE_DIR}/phases-${SESSION_TIME}.jsonl" 2>/dev/null || true
-fi
-
-# ============================================================================
-# INTELLIGENCE: Extract learnings from failures
-# ============================================================================
-if [ -f "${HOT_MEMORY}/failures.jsonl" ] && [ -s "${HOT_MEMORY}/failures.jsonl" ]; then
-    LEARNINGS_FILE="${WARM_MEMORY}/learnings-${SESSION_DATE}.md"
-    {
-        echo ""
-        echo "## Session ${SESSION_TIME}"
-        echo ""
-        echo "Failures to review:"
-        tail -5 "${HOT_MEMORY}/failures.jsonl" | while read -r line; do
-            tool=$(echo "${line}" | grep -o '"tool":"[^"]*"' | sed 's/"tool":"//;s/"$//')
-            echo "- ${tool}"
-        done
-    } >> "${LEARNINGS_FILE}"
-fi
-
-# ============================================================================
-# MONITORING: Save final session metrics
-# ============================================================================
-cat > "${METRICS_DIR}/session-${SESSION_ID}.json" << EOF
-{
-  "session_id": "${SESSION_ID}",
-  "ended_at": "${TIMESTAMP}",
-  "status": "completed",
-  "metrics": ${METRICS},
-  "phases": "${PHASE_ANALYSIS}"
-}
+---
+*Generated by PILOT*
 EOF
 
-# ============================================================================
-# MEMORY: Update warm memory index
-# ============================================================================
-{
-    echo "# PILOT Memory Index"
-    echo ""
-    echo "**Updated:** ${TIMESTAMP}"
-    echo ""
-    echo "## Recent Sessions"
-    find "${COLD_MEMORY}/sessions" -name "summary-*.md" -type f 2>/dev/null | sort -r | head -10 | while read -r file; do
-        echo "- $(basename "$(dirname "${file}")")/$(basename "${file}" .md)"
-    done
-    echo ""
-    echo "## Stats"
-    echo "- Hot: $(find "${HOT_MEMORY}" -type f 2>/dev/null | wc -l | tr -d ' ') files"
-    echo "- Warm: $(find "${WARM_MEMORY}" -type f 2>/dev/null | wc -l | tr -d ' ') files"
-    echo "- Cold: $(find "${COLD_MEMORY}" -type f 2>/dev/null | wc -l | tr -d ' ') files"
-} > "${WARM_MEMORY}/index.md"
+# Archive session files
+[ -f "$HOT_MEMORY/current-session.jsonl" ] && cp "$HOT_MEMORY/current-session.jsonl" "$ARCHIVE_DIR/session-$SESSION_TIME.jsonl" 2>/dev/null || true
+[ -f "$HOT_MEMORY/tool-usage.jsonl" ] && grep "\"session_id\":\"$SESSION_ID\"" "$HOT_MEMORY/tool-usage.jsonl" > "$ARCHIVE_DIR/tools-$SESSION_TIME.jsonl" 2>/dev/null || true
+[ -f "$HOT_MEMORY/algorithm-phases.jsonl" ] && grep "\"session_id\":\"$SESSION_ID\"" "$HOT_MEMORY/algorithm-phases.jsonl" > "$ARCHIVE_DIR/phases-$SESSION_TIME.jsonl" 2>/dev/null || true
 
-# ============================================================================
-# Cleanup: Compress old archives (older than 30 days)
-# ============================================================================
-find "${COLD_MEMORY}/sessions" -name "*.jsonl" -mtime +30 -exec gzip {} \; 2>/dev/null || true
-find "${COLD_MEMORY}/sessions" -name "*.log" -mtime +30 -exec gzip {} \; 2>/dev/null || true
+# Save final session metrics
+cat > "$METRICS_DIR/session-$SESSION_ID.json" 2>/dev/null << EOF || true
+{"session_id":"$SESSION_ID","ended_at":"$TIMESTAMP","status":"completed","metrics":$METRICS,"phases":"$PHASES"}
+EOF
 
-# Output confirmation
-echo "✅ Session archived: ${ARCHIVE_DIR}/summary-${SESSION_TIME}.md"
-
+echo "✅ Session archived: $ARCHIVE_DIR/summary-$SESSION_TIME.md"
 exit 0
