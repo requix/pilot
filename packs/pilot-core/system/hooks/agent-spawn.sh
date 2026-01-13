@@ -1,138 +1,55 @@
 #!/usr/bin/env bash
-# agent-spawn.sh - Initialize PILOT session with context, memory, and monitoring
-# Part of PILOT (Platform for Intelligent Lifecycle Operations and Tools)
-#
-# FOUNDATION FEATURES:
-# - Memory: Load relevant warm memory context
-# - Intelligence: Initialize algorithm tracking
-# - Security: Load security context
-# - Monitoring: Start session metrics
-#
-# INPUT: JSON from Kiro (first argument)
-# OUTPUT: Context text to stdout (injected into agent context)
-
-set -euo pipefail
+# agent-spawn.sh - Initialize PILOT session
+# Part of PILOT - Fail-safe design (always exits 0)
 
 PILOT_HOME="${HOME}/.kiro/pilot"
-IDENTITY_DIR="${PILOT_HOME}/identity"
-RESOURCES_DIR="${PILOT_HOME}/resources"
-MEMORY_DIR="${PILOT_HOME}/memory"
 CACHE_DIR="${PILOT_HOME}/.cache"
 METRICS_DIR="${PILOT_HOME}/metrics"
+IDENTITY_DIR="${PILOT_HOME}/identity"
 
-# Parse input JSON (Kiro provides this as first argument)
-input_json="${1:-{}}"
+# Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
+input_json=$(cat 2>/dev/null || echo "{}")
 
-# Extract session ID from input or generate one
-SESSION_ID=$(echo "${input_json}" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"sessionId"[[:space:]]*:[[:space:]]*"//;s/"$//' || echo "")
-if [ -z "${SESSION_ID}" ]; then
-    SESSION_ID="pilot-$(date +%s)-$$"
-fi
+# Simple session ID extraction using jq (with fallback)
+get_session_id() {
+    local json="$1"
+    local sid=""
+    if command -v jq >/dev/null 2>&1; then
+        sid=$(echo "$json" | jq -r '.sessionId // .session_id // empty' 2>/dev/null) || true
+    fi
+    # Generate if empty
+    if [ -z "$sid" ]; then
+        sid="pilot-$(date +%s)-$$"
+    fi
+    echo "$sid"
+}
+
+SESSION_ID=$(get_session_id "$input_json")
 
 # Ensure directories exist
-mkdir -p "${CACHE_DIR}" "${METRICS_DIR}" "${MEMORY_DIR}/hot" "${MEMORY_DIR}/warm" "${MEMORY_DIR}/cold"
+mkdir -p "$CACHE_DIR" "$METRICS_DIR" "${PILOT_HOME}/memory/hot" 2>/dev/null || true
 
-# ============================================================================
-# MONITORING: Start session metrics
-# ============================================================================
-SESSION_START=$(date +%s)
-METRICS_FILE="${METRICS_DIR}/session-${SESSION_ID}.json"
+# Persist session ID for other hooks
+echo "$SESSION_ID" > "$CACHE_DIR/current-session-id" 2>/dev/null || true
 
-cat > "${METRICS_FILE}" << EOF
-{
-  "session_id": "${SESSION_ID}",
-  "started_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "status": "active",
-  "tool_calls": 0,
-  "security_blocks": 0,
-  "errors": 0
-}
+# Create session metrics file
+cat > "$METRICS_DIR/session-${SESSION_ID}.json" 2>/dev/null << EOF || true
+{"session_id":"${SESSION_ID}","started_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","status":"active"}
 EOF
 
-# ============================================================================
-# MEMORY: Load relevant warm memory
-# ============================================================================
-load_warm_memory() {
-    local memory_context=""
-    
-    if [ -d "${MEMORY_DIR}/warm" ]; then
-        local learnings=$(find "${MEMORY_DIR}/warm" -name "*.md" -type f 2>/dev/null | sort -r | head -5)
-        if [ -n "${learnings}" ]; then
-            memory_context="Recent learnings available in warm memory"
-        fi
-    fi
-    
-    echo "${memory_context}"
-}
+# Output context
+cat << EOF
+<pilot-context>
+PILOT Session: ${SESSION_ID}
+Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
 
-# ============================================================================
-# CACHE: Check for cached context
-# ============================================================================
+## Universal Algorithm
+OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN
 
-# Cross-platform stat for modification time
-get_mtime() {
-    stat -c "%Y" "$1" 2>/dev/null || stat -f "%m" "$1" 2>/dev/null || echo "0"
-}
-
-# Cross-platform md5 hash
-get_md5() {
-    md5sum 2>/dev/null | cut -d' ' -f1 || md5 2>/dev/null || echo "none"
-}
-
-generate_cache_key() {
-    if [ -d "${IDENTITY_DIR}" ]; then
-        find "${IDENTITY_DIR}" -type f -name "*.md" -exec sh -c 'stat -c "%Y" "$1" 2>/dev/null || stat -f "%m" "$1" 2>/dev/null' _ {} \; 2>/dev/null | sort | get_md5
-    else
-        echo "none"
-    fi
-}
-
-CACHE_KEY=$(generate_cache_key)
-CACHE_FILE="${CACHE_DIR}/agent-spawn-${CACHE_KEY}.txt"
-
-# Check if cached output exists and is recent (< 5 minutes)
-if [ -f "${CACHE_FILE}" ]; then
-    cache_mtime=$(get_mtime "${CACHE_FILE}")
-    cache_age=$(($(date +%s) - ${cache_mtime}))
-    if [ ${cache_age} -lt 300 ]; then
-        cat "${CACHE_FILE}"
-        exit 0
-    fi
-fi
-
-# ============================================================================
-# Generate fresh context output
-# ============================================================================
-{
-    echo "<pilot-context>"
-    echo "PILOT Session: ${SESSION_ID}"
-    echo "Time: $(date '+%Y-%m-%d %H:%M:%S %Z')"
-    echo ""
-    echo "## Foundation Systems"
-    echo "- Memory: Three-tier (Hot/Warm/Cold) active"
-    echo "- Intelligence: Algorithm phase tracking enabled"
-    echo "- Security: Pre-tool validation active"
-    echo "- Monitoring: Session metrics recording"
-    echo ""
-    echo "## Universal Algorithm"
-    echo "OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN"
-    echo "Key: Define success criteria in BUILD before EXECUTE"
-    echo ""
-    echo "## Identity Files"
-    if [ -d "${IDENTITY_DIR}" ]; then
-        for file in "${IDENTITY_DIR}"/*.md; do
-            [ -f "${file}" ] && echo "- $(basename "${file}" .md)"
-        done 2>/dev/null || true
-    fi
-    echo ""
-    echo "## Guidelines"
-    echo "- First-person voice"
-    echo "- Show algorithm phase when working"
-    echo "- Extract learnings for future sessions"
-    echo "</pilot-context>"
-} | tee "${CACHE_FILE}"
-
-# Clean old cache files
-find "${CACHE_DIR}" -name "agent-spawn-*.txt" -type f 2>/dev/null | sort -r | tail -n +11 | xargs rm -f 2>/dev/null || true
+## Guidelines
+- First-person voice
+- Show algorithm phase when working
+</pilot-context>
+EOF
 
 exit 0

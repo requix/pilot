@@ -125,6 +125,15 @@ cp "${PACK_DIR}/system/hooks/"*.sh "${KIRO_HOME}/hooks/pilot/"
 chmod +x "${KIRO_HOME}/hooks/pilot/"*.sh
 log "SUCCESS" "Hooks installed (5 scripts)"
 
+# Step 4b: Install scripts
+log "INFO" "Installing scripts..."
+mkdir -p "${PILOT_HOME}/scripts"
+if [[ -d "${PACK_DIR}/scripts" ]]; then
+    cp "${PACK_DIR}/scripts/"*.sh "${PILOT_HOME}/scripts/" 2>/dev/null || true
+    chmod +x "${PILOT_HOME}/scripts/"*.sh 2>/dev/null || true
+    log "SUCCESS" "Scripts installed"
+fi
+
 # Step 5: Install resources
 log "INFO" "Installing resources..."
 cp "${PACK_DIR}/resources/"*.md "${PILOT_HOME}/resources/"
