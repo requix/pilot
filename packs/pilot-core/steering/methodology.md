@@ -67,15 +67,32 @@ Before execution, define what success looks like:
 
 ## Self-Learning
 
-PILOT automatically captures learnings when you solve problems. These learnings are:
-- Stored in `~/.pilot/learnings/`
-- Searchable in future sessions
-- Used to provide relevant context
+When you solve a non-trivial problem, debug an issue, or discover something valuable, **capture the learning**.
 
-To manually capture a learning:
+### When to Capture
+- Fixed a bug and found the root cause
+- Discovered a useful pattern or technique
+- Learned something about the codebase/project
+- Found a solution after investigation
+
+### How to Capture
+1. Write the learning to the learnings file:
+```bash
+echo -e "\n## [Title]\n**Context:** [situation]\n**Learning:** [insight]\n" >> "$HOME/.pilot/learnings/$(date +%Y%m%d).md"
 ```
-This is worth remembering: [insight]
-```
+
+2. Update the knowledge base so it's searchable:
+   - Use the `knowledge` tool to update the "pilot-learnings" entry
+   - If "pilot-learnings" doesn't exist, add it first pointing to `~/.pilot/learnings`
+
+### Searching Past Learnings
+Before solving a problem, search the knowledge base for relevant past learnings:
+- Use the `knowledge` tool to search for related topics
+- Apply relevant learnings to the current problem
+
+### Don't Capture
+- Routine tasks without insights
+- Simple lookups or reads
 
 ## Response Format
 

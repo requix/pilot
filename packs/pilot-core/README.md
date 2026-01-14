@@ -1,8 +1,8 @@
 # PILOT Core Pack
 
-> The foundation of your personal AI infrastructure
+> Personal Intelligence Layer for Optimized Tasks
 
-PILOT (Platform for Intelligent Lifecycle Operations and Tools) is an engineering assistant that follows the Universal Algorithm for systematic problem-solving.
+PILOT is a self-learning engineering assistant that follows the Universal Algorithm for systematic problem-solving. It captures learnings from your work and applies them to future problems.
 
 ---
 
@@ -11,96 +11,108 @@ PILOT (Platform for Intelligent Lifecycle Operations and Tools) is an engineerin
 | Component | Description |
 |-----------|-------------|
 | **Universal Algorithm** | 7-phase methodology: Observe → Think → Plan → Build → Execute → Verify → Learn |
-| **Identity System** | 10 personal context files for personalized assistance |
-| **4 Foundation Features** | Memory, Intelligence, Security, Monitoring - all as bash hooks |
+| **Self-Learning System** | Automatic capture and retrieval of learnings via semantic search |
+| **Identity System** | Personal context files for personalized assistance |
+| **Session Tracking** | Pattern detection, metrics, and session archiving |
 
 ---
 
-## Foundation Features
+## Self-Learning System
 
-All foundation features are implemented as pure bash scripts triggered by Kiro hooks.
+PILOT's core feature is its ability to learn from your work and apply that knowledge to future problems.
 
-### 1. Memory System
+### The Complete Cycle
 
-Three-tier memory with automatic archiving:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SELF-LEARNING CYCLE                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   Problem ──► Search Knowledge ──► Apply Past Learning ──► Solve│
+│      │                                                          │
+│      ▼                                                          │
+│   New Insight ──► Capture to File ──► Update Knowledge Base     │
+│                                              │                  │
+│                                              ▼                  │
+│                                    Available for Future         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-| Tier | Purpose | Retention |
-|------|---------|-----------|
-| **Hot** | Current session data | Until session ends |
-| **Warm** | Recent learnings, patterns | 30 days |
-| **Cold** | Archived sessions | 1 year (compressed) |
+### How It Works
 
-**Files:**
-- `memory/hot/current-session.jsonl` - Session interactions
-- `memory/hot/tool-usage.jsonl` - Tool call history
-- `memory/warm/index.md` - Memory index
-- `memory/cold/sessions/` - Archived sessions
+1. **Capture**: When you solve a problem or discover something valuable, PILOT writes the learning to `~/.pilot/learnings/`
 
-### 2. Intelligence System
+2. **Index**: PILOT updates the knowledge base using Kiro's `/knowledge` tool for semantic search
 
-Algorithm phase tracking and learning extraction:
+3. **Search**: When facing a new problem, PILOT searches the knowledge base for relevant past learnings
 
-- **Phase Detection** - Automatically detects which algorithm phase from prompts
-- **Pattern Tracking** - Records tool usage patterns for learning
-- **Learning Extraction** - Captures failures and successes for future reference
+4. **Apply**: PILOT uses your past learnings to inform solutions to current problems
 
-**Files:**
-- `memory/hot/algorithm-phases.jsonl` - Phase transitions
-- `memory/hot/tool-patterns.jsonl` - Usage patterns
-- `memory/warm/learnings-*.md` - Extracted learnings
+### Example Flow
 
-### 3. Security System
+```
+You: "I have a stuck Terraform state lock. What should I do?"
 
-Multi-tier command validation:
+PILOT: [Searches knowledge base for "terraform state lock"]
+       [Finds your previous learning about force-unlock]
+       
+       "Based on your past experience, use:
+        terraform force-unlock LOCK_ID
+        
+        Key safety note from your learning: Only use when 
+        certain no other operations are running."
+```
 
-| Tier | Protection | Action |
-|------|------------|--------|
-| **1** | Catastrophic commands (rm -rf /) | Block |
-| **2** | Remote code execution (curl \| bash) | Block |
-| **3** | System directory writes | Block |
-| **4** | Sensitive file access | Alert |
+### Capturing Learnings
 
-**Files:**
-- `memory/hot/security.log` - Security audit trail
+PILOT captures learnings when you:
+- Fix a bug and find the root cause
+- Discover a useful pattern or technique
+- Learn something about a codebase/project
+- Find a solution after investigation
 
-### 4. Monitoring System
+You can also explicitly ask:
+```
+"I just learned that [insight]. Save this as a learning."
+```
 
-Session metrics and health tracking:
+### Storage Locations
 
-- **Session Metrics** - Prompts, tool calls, success/failure rates
-- **Performance Tracking** - Tool execution durations
-- **Security Events** - Blocked commands count
-
-**Files:**
-- `metrics/session-*.json` - Per-session metrics
-- `metrics/events.jsonl` - Event stream
+| Location | Purpose |
+|----------|---------|
+| `~/.pilot/learnings/` | Learning files (daily markdown) |
+| `~/.pilot/patterns/` | Question pattern detection |
+| `~/.pilot/sessions/` | Session archives |
+| `~/.kiro/knowledge_bases/pilot_*/` | Semantic search index |
 
 ---
 
-## Directory Structure (After Installation)
+## Directory Structure
 
 ```
 ~/.kiro/
-├── pilot/                    # PILOT home directory
-│   ├── identity/             # Your personal context (10 files)
-│   ├── resources/            # Algorithm & principles
-│   ├── memory/               # Three-tier memory
-│   │   ├── hot/              # Current session
-│   │   ├── warm/             # Recent (30 days)
-│   │   └── cold/             # Archive (1 year)
-│   ├── metrics/              # Session metrics
-│   ├── packs/                # Installed packs
-│   └── config.json           # Configuration
-├── agents/
-│   └── pilot.json            # Agent configuration
-├── hooks/pilot/              # Hook scripts (5 files)
-│   ├── agent-spawn.sh        # Memory + Intelligence + Monitoring init
-│   ├── user-prompt-submit.sh # Memory + Intelligence (phase detection)
+├── agents/pilot.json         # Agent configuration
+├── hooks/pilot/              # Hook scripts
+│   ├── agent-spawn.sh        # Session init, context loading
+│   ├── user-prompt-submit.sh # Pattern detection
 │   ├── pre-tool-use.sh       # Security validation
-│   ├── post-tool-use.sh      # Memory + Intelligence + Monitoring
-│   └── stop.sh               # Memory archive + Learning extraction
-└── steering/pilot/           # Steering files
-    └── pilot-core-knowledge.md
+│   ├── post-tool-use.sh      # Tool tracking
+│   └── stop.sh               # Session archiving
+├── steering/pilot/           # Methodology guidance
+├── pilot/                    # PILOT integration
+│   ├── identity/             # Identity templates
+│   ├── resources/            # Algorithm & principles
+│   ├── scripts/              # Helper scripts
+│   ├── memory/               # Session memory
+│   └── metrics/              # Session metrics
+
+~/.pilot/                     # Self-learning data
+├── learnings/                # Captured learnings (searchable)
+├── patterns/                 # Question patterns
+├── sessions/                 # Session archives
+├── identity/                 # User context
+└── logs/                     # System logs
 ```
 
 ---
@@ -110,36 +122,66 @@ Session metrics and health tracking:
 PILOT follows a 7-phase approach to every task:
 
 1. **OBSERVE** - Understand current state (never assume)
-2. **THINK** - Generate 3-5 possible approaches
-3. **PLAN** - Select strategy and break into steps
-4. **BUILD** - Define success criteria BEFORE executing
-5. **EXECUTE** - Perform the work
-6. **VERIFY** - Test against success criteria objectively
-7. **LEARN** - Extract insights for future work
+2. **THINK** - Generate multiple approaches
+3. **PLAN** - Select strategy and define success criteria
+4. **BUILD** - Refine criteria to be testable
+5. **EXECUTE** - Do the work
+6. **VERIFY** - Test against success criteria
+7. **LEARN** - Extract and capture insights
 
 **Key principle:** "Verifiability is everything" - Always define what success looks like in BUILD phase before EXECUTE phase.
 
 ---
 
+## Prerequisites
+
+### Required: Kiro CLI
+
+PILOT requires Kiro CLI to function.
+
+### Optional but Recommended: Knowledge Feature (Experimental)
+
+PILOT's semantic search uses Kiro CLI's experimental `/knowledge` feature. This enables intelligent retrieval of past learnings.
+
+**To enable:**
+```bash
+kiro-cli settings chat.enableKnowledge true
+```
+
+**What happens without it:**
+- ✅ Learning capture still works (files saved to `~/.pilot/learnings/`)
+- ✅ Basic functionality works
+- ❌ Semantic search disabled - agent can't search past learnings intelligently
+- ❌ All learnings loaded at session start (inefficient as learnings grow)
+
+**Note:** The `/knowledge` feature is experimental and may change in future Kiro CLI versions.
+
+---
+
 ## Installation
 
-### AI-Assisted (Recommended)
+### Using the Install Script (Recommended)
 
-Give this pack directory to your AI agent:
+```bash
+cd src
+./install.sh
+```
+
+For updates (preserves identity and learnings):
+```bash
+./install.sh --update
+```
+
+### First-Time Setup
+
+After installation, set up the knowledge base for learnings:
 
 ```
-Install the pilot-core pack from this directory.
+# In Kiro CLI with pilot agent:
+Please add my learnings folder (~/.pilot/learnings) to the knowledge base
 ```
 
-Your AI will:
-1. Read this README for context
-2. Follow INSTALL.md step by step
-3. Copy files to ~/.kiro/
-4. Complete VERIFY.md checklist
-
-### Manual Installation
-
-See [INSTALL.md](INSTALL.md) for step-by-step instructions.
+This enables semantic search across your captured learnings.
 
 ---
 
@@ -147,89 +189,54 @@ See [INSTALL.md](INSTALL.md) for step-by-step instructions.
 
 After installation:
 
-1. **Select the pilot agent** in Kiro
-2. **Customize your identity** - Edit files in `~/.kiro/pilot/identity/`
-3. **Start working** - PILOT will follow the Universal Algorithm
+1. **Select the pilot agent** in Kiro CLI: `kiro-cli chat --agent pilot`
+2. **Start working** - PILOT follows the Universal Algorithm
+3. **Learnings are captured automatically** when you solve problems
+4. **Past learnings inform future solutions** via semantic search
 
-### Example Interaction
+### Example: Learning Capture
 
 ```
-User: Help me design a new API endpoint
+You: "I just learned that git stash --include-untracked stashes 
+      untracked files too. Save this."
 
-PILOT: I'll follow the Universal Algorithm for this task.
+PILOT: ✅ Learning captured and indexed!
+       - Saved to ~/.pilot/learnings/20260114.md
+       - Updated in knowledge base for future searches
+```
 
-**OBSERVE**: Let me understand your current API structure...
-[analyzes codebase]
+### Example: Learning Retrieval
 
-**THINK**: Here are 3 approaches we could take:
-1. RESTful endpoint following existing patterns
-2. GraphQL mutation for flexibility
-3. gRPC for performance
+```
+You: "How do I stash files including new ones I haven't added yet?"
 
-**PLAN**: Based on your existing REST API, I recommend approach #1...
-
-**BUILD**: Success criteria:
-- [ ] Endpoint accepts POST requests
-- [ ] Validates input schema
-- [ ] Returns proper status codes
-- [ ] Has test coverage
-
-**EXECUTE**: Creating the endpoint...
-
-**VERIFY**: Running tests...
-
-**LEARN**: This pattern worked well for [reason]. Adding to memory.
+PILOT: [Searches knowledge base]
+       
+       Based on your past learning: Use `git stash --include-untracked`
+       to stash untracked files along with tracked changes.
 ```
 
 ---
 
 ## Customization
 
-### Identity Files
+### Identity Context
 
-Edit these files to personalize PILOT's assistance:
+Create your identity file for personalized assistance:
 
-| File | Purpose | Example |
-|------|---------|---------|
-| `MISSION.md` | Your ultimate goal | "Build tools that empower developers" |
-| `GOALS.md` | Specific objectives | "Launch v1.0 by Q2" |
-| `PROJECTS.md` | Current work | "API redesign, Mobile app" |
-| `BELIEFS.md` | Core convictions | "Simplicity over complexity" |
-| `STRATEGIES.md` | Proven approaches | "Test-first development" |
-| `LEARNED.md` | Past lessons | "Always validate inputs" |
-
-### Memory System
-
-PILOT automatically stores learnings:
-
-- **Hot memory** (24h) - Recent context, active work
-- **Warm memory** (30 days) - Relevant learnings, decisions
-- **Cold memory** (1 year) - Archive for reference
-
----
-
-## Files in This Pack
-
-```
-pilot-core/
-├── README.md           # This file
-├── INSTALL.md          # Installation instructions
-├── VERIFY.md           # Verification checklist
-├── pack.json           # Pack metadata
-├── agents/
-│   └── pilot.json      # Agent configuration
-├── identity/           # Identity templates (10 files)
-├── resources/          # Core knowledge (2 files)
-├── steering/           # Steering files
-└── system/hooks/       # Hook scripts (5 files)
+```bash
+cp ~/.pilot/identity/context.md.template ~/.pilot/identity/context.md
+# Edit with your details
 ```
 
----
+### Knowledge Base
 
-## Requirements
+Add project documentation to the knowledge base:
 
-- Kiro IDE
-- macOS, Linux, or Windows (WSL)
+```
+# In Kiro CLI:
+Please add [path/to/docs] to the knowledge base as "project-docs"
+```
 
 ---
 
@@ -238,23 +245,32 @@ pilot-core/
 ### Agent not appearing
 
 ```bash
-# Verify agent file
 cat ~/.kiro/agents/pilot.json | head -5
 ```
 
 ### Hooks not executing
 
 ```bash
-# Make hooks executable
 chmod +x ~/.kiro/hooks/pilot/*.sh
 ```
 
-### Identity not loading
+### Knowledge base not searching
 
+Ensure the feature is enabled:
 ```bash
-# Check identity files exist
-ls ~/.kiro/pilot/identity/
+kiro-cli settings chat.enableKnowledge true
 ```
+
+Then add learnings to knowledge base:
+```
+/knowledge add --name "pilot-learnings" --path ~/.pilot/learnings --index-type Best
+```
+
+---
+
+## Version
+
+**v1.1.0** - Self-Learning System with Knowledge Base Integration
 
 ---
 
@@ -263,4 +279,3 @@ ls ~/.kiro/pilot/identity/
 - [INSTALL.md](INSTALL.md) - Installation guide
 - [VERIFY.md](VERIFY.md) - Verification checklist
 - [the-algorithm.md](resources/the-algorithm.md) - Universal Algorithm details
-- [pilot-principles.md](resources/pilot-principles.md) - PILOT principles
