@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# agent-spawn.sh - Initialize PILOT session
+# agent-spawn.sh - Initialize PILOT session with self-learning context
 # Part of PILOT - Fail-safe design (always exits 0)
 
+# PILOT directories
+PILOT_DIR="${PILOT_DIR:-$HOME/.pilot}"
 PILOT_HOME="${HOME}/.kiro/pilot"
+LEARNINGS_DIR="${PILOT_DIR}/learnings"
+IDENTITY_DIR="${PILOT_DIR}/identity"
+LOGS_DIR="${PILOT_DIR}/logs"
 CACHE_DIR="${PILOT_HOME}/.cache"
 METRICS_DIR="${PILOT_HOME}/metrics"
-IDENTITY_DIR="${PILOT_HOME}/identity"
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -27,7 +31,7 @@ get_session_id() {
 SESSION_ID=$(get_session_id "$input_json")
 
 # Ensure directories exist
-mkdir -p "$CACHE_DIR" "$METRICS_DIR" "${PILOT_HOME}/memory/hot" 2>/dev/null || true
+mkdir -p "$CACHE_DIR" "$METRICS_DIR" "$LEARNINGS_DIR" "$IDENTITY_DIR" "$LOGS_DIR" "${PILOT_HOME}/memory/hot" 2>/dev/null || true
 
 # Persist session ID for other hooks
 echo "$SESSION_ID" > "$CACHE_DIR/current-session-id" 2>/dev/null || true
@@ -37,18 +41,77 @@ cat > "$METRICS_DIR/session-${SESSION_ID}.json" 2>/dev/null << EOF || true
 {"session_id":"${SESSION_ID}","started_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","status":"active"}
 EOF
 
+# ============================================
+# SELF-LEARNING: Load context from past learnings
+# ============================================
+
+# Load identity context if exists
+IDENTITY_CONTEXT=""
+if [ -f "$IDENTITY_DIR/context.md" ]; then
+    IDENTITY_CONTEXT=$(cat "$IDENTITY_DIR/context.md" 2>/dev/null | head -50)
+fi
+
+# Get recent learnings (last 7 days, max 5)
+RECENT_LEARNINGS=""
+if [ -d "$LEARNINGS_DIR" ]; then
+    LEARNING_FILES=$(find "$LEARNINGS_DIR" -name "*_learning.md" -mtime -7 -type f 2>/dev/null | sort -r | head -5)
+    if [ -n "$LEARNING_FILES" ]; then
+        RECENT_LEARNINGS="Recent learnings available:"
+        for f in $LEARNING_FILES; do
+            # Extract just the summary line
+            SUMMARY=$(grep -A1 "^## Summary" "$f" 2>/dev/null | tail -1 | head -c 100)
+            [ -n "$SUMMARY" ] && RECENT_LEARNINGS="$RECENT_LEARNINGS
+- $SUMMARY..."
+        done
+    fi
+fi
+
+# Count total learnings
+TOTAL_LEARNINGS=$(find "$LEARNINGS_DIR" -name "*_learning.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+
 # Output context
 cat << EOF
 <pilot-context>
 PILOT Session: ${SESSION_ID}
 Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
+Learnings in knowledge base: ${TOTAL_LEARNINGS:-0}
 
 ## Universal Algorithm
 OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN
 
+For complex tasks, follow these phases:
+1. OBSERVE - Understand current state before acting
+2. THINK - Generate multiple approaches
+3. PLAN - Select strategy, define success criteria
+4. BUILD - Refine criteria to be testable
+5. EXECUTE - Do the work
+6. VERIFY - Test against criteria
+7. LEARN - Extract insights for future reference
+EOF
+
+# Add identity if available
+if [ -n "$IDENTITY_CONTEXT" ]; then
+    cat << EOF
+
+## Identity Context
+$IDENTITY_CONTEXT
+EOF
+fi
+
+# Add recent learnings if available
+if [ -n "$RECENT_LEARNINGS" ]; then
+    cat << EOF
+
+## $RECENT_LEARNINGS
+EOF
+fi
+
+cat << EOF
+
 ## Guidelines
 - First-person voice
-- Show algorithm phase when working
+- Show algorithm phase when working on complex tasks
+- Learnings are automatically captured when you solve problems
 </pilot-context>
 EOF
 

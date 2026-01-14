@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PILOT Installation Script
-# Platform for Intelligent Lifecycle Operations and Tools
+# Personal Intelligence Layer for Optimized Tasks
 #
-# Installs PILOT to ~/.kiro/ (Kiro's home directory)
+# Installs PILOT to ~/.kiro/ and ~/.pilot/
 #
 # Usage: ./install.sh [OPTIONS]
 #   --update    Update existing installation
@@ -10,10 +10,11 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIRO_HOME="${HOME}/.kiro"
 PILOT_HOME="${KIRO_HOME}/pilot"
+PILOT_DATA="${HOME}/.pilot"  # Self-learning data directory
 
 # Colors
 RED='\033[0;31m'
@@ -40,16 +41,23 @@ PILOT Installation Script
 Usage: ./install.sh [OPTIONS]
 
 OPTIONS:
-    --update, -u     Update existing installation (preserves identity files)
+    --update, -u     Update existing installation (preserves identity and learnings)
     --help, -h       Show this help message
 
 DESCRIPTION:
-    Installs PILOT to ~/.kiro/ with:
-    - Agent configuration
-    - Hook scripts (memory, intelligence, security, monitoring)
-    - Identity templates
-    - Resources (Algorithm, Principles)
-    - Steering files
+    Installs PILOT with self-learning capabilities:
+    
+    ~/.kiro/           - Kiro integration
+    ├── agents/        - PILOT agent configuration
+    ├── hooks/pilot/   - Self-learning hooks
+    └── steering/pilot/- Methodology guidance
+    
+    ~/.pilot/          - Self-learning data
+    ├── learnings/     - Auto-captured learnings
+    ├── sessions/      - Session archives
+    ├── patterns/      - Pattern detection
+    ├── identity/      - User context
+    └── logs/          - System logs
 
 EOF
 }
@@ -73,8 +81,8 @@ echo "║   ██╔═══╝ ██║██║     ██║   ██║  
 echo "║   ██║     ██║███████╗╚██████╔╝   ██║                             ║"
 echo "║   ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝                             ║"
 echo "║                                                                   ║"
-echo "║   Platform for Intelligent Lifecycle Operations and Tools        ║"
-echo "║                         v${VERSION}                                  ║"
+echo "║   Personal Intelligence Layer for Optimized Tasks                ║"
+echo "║   Self-Learning System for Kiro CLI          v${VERSION}             ║"
 echo "╚═══════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -93,12 +101,14 @@ if [[ "$UPDATE_MODE" == "true" ]] && [[ -d "$PILOT_HOME" ]]; then
     cp -r "$PILOT_HOME" "$BACKUP_DIR/" 2>/dev/null || true
     [[ -f "${KIRO_HOME}/agents/pilot.json" ]] && cp "${KIRO_HOME}/agents/pilot.json" "$BACKUP_DIR/"
     [[ -d "${KIRO_HOME}/hooks/pilot" ]] && cp -r "${KIRO_HOME}/hooks/pilot" "$BACKUP_DIR/"
+    [[ -d "$PILOT_DATA" ]] && cp -r "$PILOT_DATA" "$BACKUP_DIR/pilot-data" 2>/dev/null || true
     log "SUCCESS" "Backup created: $BACKUP_DIR"
 fi
 
 # Step 2: Create directories
 log "INFO" "Creating directories..."
 
+# Kiro integration directories
 mkdir -p "${PILOT_HOME}/identity"
 mkdir -p "${PILOT_HOME}/resources"
 mkdir -p "${PILOT_HOME}/memory/hot"
@@ -111,6 +121,13 @@ mkdir -p "${KIRO_HOME}/agents"
 mkdir -p "${KIRO_HOME}/hooks/pilot"
 mkdir -p "${KIRO_HOME}/steering/pilot"
 mkdir -p "${KIRO_HOME}/backups"
+
+# Self-learning data directories
+mkdir -p "${PILOT_DATA}/learnings"
+mkdir -p "${PILOT_DATA}/sessions"
+mkdir -p "${PILOT_DATA}/patterns"
+mkdir -p "${PILOT_DATA}/identity"
+mkdir -p "${PILOT_DATA}/logs"
 
 log "SUCCESS" "Directories created"
 
@@ -140,12 +157,16 @@ cp "${PACK_DIR}/resources/"*.md "${PILOT_HOME}/resources/"
 log "SUCCESS" "Resources installed (Algorithm, Principles)"
 
 # Step 6: Install identity templates (skip if updating and files exist)
-if [[ "$UPDATE_MODE" == "true" ]] && [[ -f "${PILOT_HOME}/identity/MISSION.md" ]]; then
+if [[ "$UPDATE_MODE" == "true" ]] && [[ -f "${PILOT_DATA}/identity/context.md" ]]; then
     log "INFO" "Preserving existing identity files"
 else
     log "INFO" "Installing identity templates..."
     cp "${PACK_DIR}/identity/"*.md "${PILOT_HOME}/identity/"
-    log "SUCCESS" "Identity templates installed (10 files)"
+    # Also copy identity template to self-learning directory
+    if [[ -f "${PACK_DIR}/steering/identity-template.md" ]]; then
+        cp "${PACK_DIR}/steering/identity-template.md" "${PILOT_DATA}/identity/context.md.template"
+    fi
+    log "SUCCESS" "Identity templates installed"
 fi
 
 # Step 7: Install steering files
@@ -160,11 +181,12 @@ cat > "${PILOT_HOME}/config.json" << EOF
   "version": "${VERSION}",
   "installed_at": "$(date -Iseconds)",
   "pilot_home": "~/.kiro/pilot",
+  "pilot_data": "~/.pilot",
   "features": {
+    "self_learning": true,
     "memory": true,
-    "intelligence": true,
-    "security": true,
-    "monitoring": true
+    "methodology": true,
+    "pattern_detection": true
   }
 }
 EOF
@@ -178,6 +200,8 @@ ERRORS=0
 [[ -d "${KIRO_HOME}/hooks/pilot" ]] || { log "ERROR" "Hooks missing"; ((ERRORS++)); }
 [[ -d "${PILOT_HOME}/identity" ]] || { log "ERROR" "Identity missing"; ((ERRORS++)); }
 [[ -d "${PILOT_HOME}/memory" ]] || { log "ERROR" "Memory missing"; ((ERRORS++)); }
+[[ -d "${PILOT_DATA}/learnings" ]] || { log "ERROR" "Learnings directory missing"; ((ERRORS++)); }
+[[ -d "${PILOT_DATA}/patterns" ]] || { log "ERROR" "Patterns directory missing"; ((ERRORS++)); }
 
 if [[ $ERRORS -eq 0 ]]; then
     log "SUCCESS" "Installation verified"
@@ -192,28 +216,36 @@ echo "========================================="
 echo "🎉 PILOT Installation Complete!"
 echo "========================================="
 echo ""
-echo "📍 Location: ~/.kiro/pilot/"
+echo "📍 Locations:"
+echo "   ~/.kiro/pilot/    - Kiro integration"
+echo "   ~/.pilot/         - Self-learning data"
 echo ""
 echo "📁 Structure:"
 echo "   ~/.kiro/"
-echo "   ├── pilot/           # PILOT home"
-echo "   │   ├── identity/    # Your context (10 files)"
-echo "   │   ├── resources/   # Algorithm & Principles"
-echo "   │   ├── memory/      # Hot/Warm/Cold"
-echo "   │   └── metrics/     # Session metrics"
-echo "   ├── agents/pilot.json"
-echo "   ├── hooks/pilot/     # 5 hook scripts"
-echo "   └── steering/pilot/"
+echo "   ├── agents/pilot.json     # Agent config"
+echo "   ├── hooks/pilot/          # Self-learning hooks"
+echo "   └── steering/pilot/       # Methodology"
+echo ""
+echo "   ~/.pilot/"
+echo "   ├── learnings/            # Auto-captured learnings"
+echo "   ├── sessions/             # Session archives"
+echo "   ├── patterns/             # Pattern detection"
+echo "   ├── identity/             # Your context"
+echo "   └── logs/                 # System logs"
 echo ""
 echo "🚀 Next Steps:"
-echo "   1. Select 'pilot' agent in Kiro"
-echo "   2. Customize ~/.kiro/pilot/identity/ files"
-echo "   3. Start using PILOT!"
+echo "   1. Select 'pilot' agent in Kiro CLI"
+echo "   2. Customize ~/.pilot/identity/context.md"
+echo "   3. Start working - learnings captured automatically!"
 echo ""
-echo "📚 Foundation Features:"
-echo "   • Memory: Three-tier (hot/warm/cold)"
-echo "   • Intelligence: Algorithm phase tracking"
-echo "   • Security: Multi-tier command validation"
-echo "   • Monitoring: Session metrics"
+echo "📚 Self-Learning Features:"
+echo "   • Auto-capture: Learnings detected and saved"
+echo "   • Context loading: Past learnings inform new sessions"
+echo "   • Pattern detection: Repeated questions flagged"
+echo "   • Session archiving: Work history preserved"
+echo ""
+echo "🔮 Future (when available):"
+echo "   • /knowledge integration for semantic search"
+echo "   • Power conversion for cross-tool compatibility"
 echo ""
 echo "========================================="
