@@ -47,7 +47,8 @@
   "allowedTools": [
     "read",
     "write",
-    "shell"
+    "shell",
+    "knowledge"
   ],
 
   "toolsSettings": {
@@ -84,6 +85,7 @@
       "allowedPaths": [
         "~/.kiro/pilot/memory/**",
         "~/.kiro/pilot/identity/**",
+        "~/.pilot/learnings/**",
         "~/Projects/**",
         "~/Documents/**"
       ]
@@ -91,6 +93,8 @@
   },
 
   "resources": [
+    "file://~/.kiro/steering/pilot/methodology.md",
+    "file://~/.kiro/steering/pilot/pilot-core-knowledge.md",
     "file://~/.kiro/pilot/resources/the-algorithm.md",
     "file://~/.kiro/pilot/resources/pilot-principles.md",
     "file://~/.kiro/pilot/identity/MISSION.md",
@@ -103,6 +107,7 @@
     "file://~/.kiro/pilot/identity/LEARNED.md",
     "file://~/.kiro/pilot/identity/CHALLENGES.md",
     "file://~/.kiro/pilot/identity/IDEAS.md",
-    "file://~/.kiro/pilot/memory/warm/**/*.md"
+    "file://~/.kiro/pilot/memory/warm/**/*.md",
+    "file://~/.pilot/learnings/*.md"
   ]
 }
