@@ -69,12 +69,31 @@ fi
 # Count total learnings
 TOTAL_LEARNINGS=$(find "$LEARNINGS_DIR" -name "*_learning.md" -type f 2>/dev/null | wc -l | tr -d ' ')
 
+# List active steering files
+ACTIVE_STEERING=""
+STEERING_DIR="${HOME}/.kiro/steering/pilot"
+if [ -d "$STEERING_DIR" ]; then
+    ACTIVE_STEERING=$(find "$STEERING_DIR" -name "*.md" -type f 2>/dev/null | xargs -I{} basename {} 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+fi
+
 # Output context
 cat << EOF
 <pilot-context>
 PILOT Session: ${SESSION_ID}
 Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
 Learnings in knowledge base: ${TOTAL_LEARNINGS:-0}
+
+## ⚡ Path Reference (CRITICAL)
+| Purpose | Path |
+|---------|------|
+| Save learnings to | ${LEARNINGS_DIR} |
+| Identity files | ${IDENTITY_DIR} |
+| System memory (internal) | ${PILOT_HOME}/memory |
+
+**IMPORTANT:** Always save learnings to ${LEARNINGS_DIR}/ - NOT to ${PILOT_HOME}/
+
+## Active Steering
+Files: ${ACTIVE_STEERING:-none loaded}
 
 ## Universal Algorithm
 OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN

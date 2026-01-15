@@ -4,6 +4,25 @@ inclusion: always
 
 # PILOT Methodology
 
+## ⚡ Quick Reference (READ FIRST)
+
+### Path Reference (CRITICAL - DO NOT CONFUSE)
+
+| Path | Purpose | Use For |
+|------|---------|---------|
+| `~/.pilot/` | **User data** | Learnings, identity, user config |
+| `~/.kiro/pilot/` | **System files** | Memory, cache, metrics (internal) |
+
+**ALWAYS save learnings to:** `~/.pilot/learnings/$(date +%Y%m%d).md`
+**NEVER save learnings to:** `~/.kiro/pilot/` (this is for system files only!)
+
+### Learning Capture Command
+```bash
+echo -e "\n## [Title]\n**Context:** [situation]\n**Learning:** [insight]\n" >> "$HOME/.pilot/learnings/$(date +%Y%m%d).md"
+```
+
+---
+
 ## The Universal Algorithm
 
 For all non-trivial tasks, follow these 7 phases:
@@ -76,14 +95,15 @@ When you solve a non-trivial problem, debug an issue, or discover something valu
 - Found a solution after investigation
 
 ### How to Capture
-1. Write the learning to the learnings file:
-```bash
-echo -e "\n## [Title]\n**Context:** [situation]\n**Learning:** [insight]\n" >> "$HOME/.pilot/learnings/$(date +%Y%m%d).md"
-```
-
+1. Write the learning to `~/.pilot/learnings/$(date +%Y%m%d).md` (see Quick Reference above)
 2. Update the knowledge base so it's searchable:
    - Use the `knowledge` tool to update the "pilot-learnings" entry
    - If "pilot-learnings" doesn't exist, add it first pointing to `~/.pilot/learnings`
+
+### Validation Checklist
+Before saving a learning, verify:
+- [ ] Path starts with `~/.pilot/learnings/` (NOT `~/.kiro/pilot/`)
+- [ ] File follows naming convention: `YYYYMMDD.md` or `topic-name.md`
 
 ### Searching Past Learnings
 Before solving a problem, search the knowledge base for relevant past learnings:
