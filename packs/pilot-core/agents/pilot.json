@@ -16,7 +16,7 @@
     "userPromptSubmit": [
       {
         "command": "~/.kiro/hooks/pilot/user-prompt-submit.sh",
-        "timeout_ms": 1000
+        "timeout_ms": 3000
       }
     ],
     "preToolUse": [
