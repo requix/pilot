@@ -62,6 +62,7 @@ Test against success criteria.
 - Check each criterion
 - Run tests, validate outputs
 - Rollback if needed
+- Delegate verification to specialist if domain expertise needed
 
 ### 7. LEARN
 Extract and capture insights.
@@ -125,3 +126,41 @@ For significant completions, use structured format:
 ✅ RESULTS: [Outcomes]
 ➡️ NEXT: [Recommended next steps]
 ```
+
+## Delegation to Subagents
+
+PILOT can work in two modes:
+- **Hands-on** - directly edit files, run commands, implement solutions
+- **Advisory** - discuss and plan, delegate execution to specialized agents
+
+### When to Delegate
+
+| Scenario | Why | Example |
+|----------|-----|---------|
+| Specialized expertise | Domain expert knows better | Terraform validation, K8s deployment |
+| User prefers discussion | Keep PILOT in advisory mode | "Let's discuss first, then delegate" |
+| Parallel workstreams | Run multiple tasks at once | Delegate tests while continuing analysis |
+| Long-running operations | Don't block conversation | Delegate build process |
+| Risky operations | Isolate blast radius | Destructive cleanup in separate context |
+
+### Delegation Strategy
+
+1. **Find specialist first** - Look for an agent matching the task domain (e.g., terraform-expert, k8s-agent)
+2. **Fall back to kiro_default** - If no specialist found, use the base Kiro agent
+3. **Never self-delegate** - Don't delegate to 'pilot' or 'default' (may be self-referential)
+
+### How to Delegate
+
+```
+Use subagent tool with:
+- Specialized agent if available: "terraform-expert", "k8s-agent", etc.
+- Otherwise: "kiro_default" (base Kiro agent with full capabilities)
+```
+
+### Advisory Mode
+
+When user wants discussion without direct action:
+- Analyze and explain the problem
+- Propose solutions with pros/cons
+- Create implementation plan
+- Delegate execution only when user approves

@@ -132,6 +132,33 @@ head -5 "$HOME/.kiro/pilot/resources/the-algorithm.md"
 
 ---
 
+## Common Issues
+
+### Shell Commands Blocked: "matches one or more rules on the denied list"
+
+If you see an error like:
+```
+Command execute_bash is rejected because it matches one or more rules on the denied list:
+- \A.*\z
+```
+
+PILOT has a restricted set of allowed shell commands (ls, cat, grep, find, git status, etc.) for safety.
+
+**Resolution options:**
+
+1. **Delegate to specialist** - If the task needs domain expertise (terraform, k8s, etc.), ask PILOT to delegate to a specialized agent
+
+2. **Delegate to kiro_default** - For general execution, PILOT can delegate to the base Kiro agent:
+   ```
+   Please delegate this terraform validation to kiro_default
+   ```
+
+3. **Switch to hands-on mode** - If you want PILOT to execute directly, you may need to adjust the shell allowedCommands in `~/.kiro/agents/pilot.json`
+
+**Note:** Delegation is the recommended approach - it follows PILOT's principle of specialized agents working together.
+
+---
+
 ## Troubleshooting Failed Checks
 
 ### Directory missing
