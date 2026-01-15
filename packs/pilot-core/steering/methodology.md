@@ -69,6 +69,8 @@ Extract and capture insights.
 - What worked? What didn't?
 - Capture valuable learnings
 - Update preferences if needed
+- **CRITICAL: Only capture learnings AFTER verification confirms success**
+- Never document a solution as "learned" until it's proven to work
 
 ## ISC Pattern (Ideal State Criteria)
 
@@ -90,10 +92,12 @@ Before execution, define what success looks like:
 When you solve a non-trivial problem, debug an issue, or discover something valuable, **capture the learning**.
 
 ### When to Capture
-- Fixed a bug and found the root cause
-- Discovered a useful pattern or technique
+- Fixed a bug and found the root cause **AND verified the fix works**
+- Discovered a useful pattern or technique **AND tested it**
 - Learned something about the codebase/project
-- Found a solution after investigation
+- Found a solution after investigation **AND confirmed it solves the problem**
+
+**IMPORTANT:** Don't capture learnings for unverified solutions. A proposed fix is not a learning until it's proven to work.
 
 ### How to Capture
 1. Write the learning to `~/.pilot/learnings/$(date +%Y%m%d).md` (see Quick Reference above)
@@ -142,6 +146,13 @@ PILOT can work in two modes:
 | Parallel workstreams | Run multiple tasks at once | Delegate tests while continuing analysis |
 | Long-running operations | Don't block conversation | Delegate build process |
 | Risky operations | Isolate blast radius | Destructive cleanup in separate context |
+| User requests execution | User explicitly asks for commands | "Can you run terraform validate?" |
+
+### Delegation Behavior
+
+- **Delegate immediately** when user explicitly requests execution - don't explain restrictions
+- **Focus on results** - report what was done, not why delegation was needed
+- **Be transparent** about delegation - user should know work was delegated
 
 ### Delegation Strategy
 
