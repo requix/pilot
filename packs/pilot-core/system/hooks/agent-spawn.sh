@@ -10,6 +10,7 @@ IDENTITY_DIR="${PILOT_DIR}/identity"
 LOGS_DIR="${PILOT_DIR}/logs"
 CACHE_DIR="${PILOT_HOME}/.cache"
 METRICS_DIR="${PILOT_HOME}/metrics"
+OBSERVATIONS_DIR="${PILOT_DIR}/observations"
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -30,8 +31,39 @@ get_session_id() {
 
 SESSION_ID=$(get_session_id "$input_json")
 
-# Ensure directories exist
+# Ensure directories exist (fail-safe auto-creation)
 mkdir -p "$CACHE_DIR" "$METRICS_DIR" "$LEARNINGS_DIR" "$IDENTITY_DIR" "$LOGS_DIR" "${PILOT_HOME}/memory/hot" 2>/dev/null || true
+
+# Auto-create observation directories if missing (fail-safe)
+mkdir -p "$OBSERVATIONS_DIR" "${IDENTITY_DIR}/.history" 2>/dev/null || true
+
+# Source observation-init if available for full initialization
+if [[ -f "${PILOT_HOME}/lib/observation-init.sh" ]]; then
+    source "${PILOT_HOME}/lib/observation-init.sh" 2>/dev/null || true
+    ensure_observation_dirs 2>/dev/null || true
+fi
+
+# Source performance manager for tier management
+if [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]]; then
+    source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
+    perf_init 2>/dev/null || true
+fi
+
+# Source capture controller for session reset
+if [[ -f "${PILOT_HOME}/lib/capture-controller.sh" ]]; then
+    source "${PILOT_HOME}/lib/capture-controller.sh" 2>/dev/null || true
+    capture_reset_session 2>/dev/null || true
+fi
+
+# Record session start for project detection
+if [[ -f "${PILOT_HOME}/detectors/project-detector.sh" ]]; then
+    source "${PILOT_HOME}/detectors/project-detector.sh" 2>/dev/null || true
+    WORKING_DIR=$(pwd 2>/dev/null || echo "$HOME")
+    PROJECT_ID=$(project_generate_id "$WORKING_DIR" 2>/dev/null || echo "")
+    if [[ -n "$PROJECT_ID" ]]; then
+        project_record_session "$PROJECT_ID" 0 "$WORKING_DIR" 2>/dev/null || true
+    fi
+fi
 
 # Persist session ID for other hooks
 echo "$SESSION_ID" > "$CACHE_DIR/current-session-id" 2>/dev/null || true
@@ -68,6 +100,13 @@ fi
 
 # Count total learnings
 TOTAL_LEARNINGS=$(find "$LEARNINGS_DIR" -name "*_learning.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+# Get current observation tier
+CURRENT_TIER="standard"
+if [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]]; then
+    source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
+    CURRENT_TIER=$(perf_get_tier 2>/dev/null || echo "standard")
+fi
 
 # List active steering files
 ACTIVE_STEERING=""

@@ -127,7 +127,11 @@ mkdir -p "${PILOT_DATA}/learnings"
 mkdir -p "${PILOT_DATA}/sessions"
 mkdir -p "${PILOT_DATA}/patterns"
 mkdir -p "${PILOT_DATA}/identity"
+mkdir -p "${PILOT_DATA}/identity/.history"
 mkdir -p "${PILOT_DATA}/logs"
+
+# Observation directories (Adaptive Identity Capture)
+mkdir -p "${PILOT_DATA}/observations"
 
 log "SUCCESS" "Directories created"
 
@@ -142,6 +146,15 @@ cp "${PACK_DIR}/system/hooks/"*.sh "${KIRO_HOME}/hooks/pilot/"
 chmod +x "${KIRO_HOME}/hooks/pilot/"*.sh
 log "SUCCESS" "Hooks installed (5 scripts)"
 
+# Step 4a: Install lib files
+log "INFO" "Installing lib files..."
+mkdir -p "${PILOT_HOME}/lib"
+if [[ -d "${PACK_DIR}/system/lib" ]]; then
+    cp "${PACK_DIR}/system/lib/"*.sh "${PILOT_HOME}/lib/" 2>/dev/null || true
+    chmod +x "${PILOT_HOME}/lib/"*.sh 2>/dev/null || true
+    log "SUCCESS" "Lib files installed"
+fi
+
 # Step 4b: Install scripts
 log "INFO" "Installing scripts..."
 mkdir -p "${PILOT_HOME}/scripts"
@@ -149,6 +162,16 @@ if [[ -d "${PACK_DIR}/scripts" ]]; then
     cp "${PACK_DIR}/scripts/"*.sh "${PILOT_HOME}/scripts/" 2>/dev/null || true
     chmod +x "${PILOT_HOME}/scripts/"*.sh 2>/dev/null || true
     log "SUCCESS" "Scripts installed"
+fi
+
+# Step 4c: Install detectors
+log "INFO" "Installing detectors..."
+mkdir -p "${PILOT_HOME}/detectors"
+if [[ -d "${PACK_DIR}/system/detectors" ]]; then
+    cp "${PACK_DIR}/system/detectors/"*.sh "${PILOT_HOME}/detectors/" 2>/dev/null || true
+    chmod +x "${PILOT_HOME}/detectors/"*.sh 2>/dev/null || true
+    DETECTOR_COUNT=$(ls -1 "${PILOT_HOME}/detectors/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+    log "SUCCESS" "Detectors installed (${DETECTOR_COUNT} scripts)"
 fi
 
 # Step 5: Install resources
@@ -186,11 +209,204 @@ cat > "${PILOT_HOME}/config.json" << EOF
     "self_learning": true,
     "memory": true,
     "methodology": true,
-    "pattern_detection": true
+    "pattern_detection": true,
+    "identity_automation": true
   }
 }
 EOF
 log "SUCCESS" "Configuration created"
+
+# Step 9: Initialize observation files
+log "INFO" "Initializing observation system..."
+if [[ -f "${PILOT_HOME}/lib/observation-init.sh" ]]; then
+    source "${PILOT_HOME}/lib/observation-init.sh"
+    ensure_observation_dirs
+    log "SUCCESS" "Observation system initialized"
+else
+    # Fallback: create observation files manually
+    OBSERVATIONS_DIR="${PILOT_DATA}/observations"
+    
+    # Initialize projects.json
+    [[ ! -f "${OBSERVATIONS_DIR}/projects.json" ]] && cat > "${OBSERVATIONS_DIR}/projects.json" << 'EOJSON'
+{
+  "projects": {},
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize sessions.json
+    [[ ! -f "${OBSERVATIONS_DIR}/sessions.json" ]] && cat > "${OBSERVATIONS_DIR}/sessions.json" << 'EOJSON'
+{
+  "sessions": [],
+  "currentSession": null,
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize patterns.json
+    [[ ! -f "${OBSERVATIONS_DIR}/patterns.json" ]] && cat > "${OBSERVATIONS_DIR}/patterns.json" << 'EOJSON'
+{
+  "beliefs": {},
+  "strategies": {},
+  "ideas": {},
+  "models": {},
+  "narratives": {},
+  "workingStyle": {},
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize challenges.json
+    [[ ! -f "${OBSERVATIONS_DIR}/challenges.json" ]] && cat > "${OBSERVATIONS_DIR}/challenges.json" << 'EOJSON'
+{
+  "challenges": {},
+  "resolved": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize prompts.json
+    [[ ! -f "${OBSERVATIONS_DIR}/prompts.json" ]] && cat > "${OBSERVATIONS_DIR}/prompts.json" << 'EOJSON'
+{
+  "history": [],
+  "stats": {
+    "totalShown": 0,
+    "totalAccepted": 0,
+    "acceptanceRate": 0,
+    "consecutiveDismissals": 0,
+    "frequencyMultiplier": 1.0
+  },
+  "limits": {
+    "sessionPrompts": 0,
+    "weekStart": null,
+    "weekPrompts": 0
+  }
+}
+EOJSON
+
+    # Initialize time-allocation.json
+    [[ ! -f "${OBSERVATIONS_DIR}/time-allocation.json" ]] && cat > "${OBSERVATIONS_DIR}/time-allocation.json" << 'EOJSON'
+{
+  "activeSessions": {},
+  "allocations": {},
+  "weeklyTotals": {},
+  "monthlyTotals": {},
+  "warnings": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize goals.json
+    [[ ! -f "${OBSERVATIONS_DIR}/goals.json" ]] && cat > "${OBSERVATIONS_DIR}/goals.json" << 'EOJSON'
+{
+  "inferredGoals": {},
+  "projectClusters": {},
+  "missionHints": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize working-style.json
+    [[ ! -f "${OBSERVATIONS_DIR}/working-style.json" ]] && cat > "${OBSERVATIONS_DIR}/working-style.json" << 'EOJSON'
+{
+  "responseFormat": {
+    "prefersBullets": 0,
+    "prefersCode": 0,
+    "prefersConcise": 0,
+    "prefersDetailed": 0
+  },
+  "sessionTimes": [],
+  "technologies": {},
+  "communicationPatterns": {
+    "directRequests": 0,
+    "questionStyle": 0,
+    "contextProvided": 0
+  },
+  "detectedPreferences": {},
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize evolution.json
+    [[ ! -f "${OBSERVATIONS_DIR}/evolution.json" ]] && cat > "${OBSERVATIONS_DIR}/evolution.json" << 'EOJSON'
+{
+  "staleProjects": [],
+  "techSnapshots": [],
+  "completedGoals": [],
+  "evolutionEvents": [],
+  "lastCheck": null,
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize cross-file.json
+    [[ ! -f "${OBSERVATIONS_DIR}/cross-file.json" ]] && cat > "${OBSERVATIONS_DIR}/cross-file.json" << 'EOJSON'
+{
+  "connections": [],
+  "suggestions": [],
+  "lastReview": null
+}
+EOJSON
+
+    # Initialize performance.json
+    [[ ! -f "${OBSERVATIONS_DIR}/performance.json" ]] && cat > "${OBSERVATIONS_DIR}/performance.json" << 'EOJSON'
+{
+  "currentTier": "standard",
+  "detectorMetrics": {},
+  "disabledDetectors": [],
+  "tierHistory": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize strategies.json
+    [[ ! -f "${OBSERVATIONS_DIR}/strategies.json" ]] && cat > "${OBSERVATIONS_DIR}/strategies.json" << 'EOJSON'
+{
+  "strategies": {},
+  "approaches": [],
+  "failures": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize ideas.json
+    [[ ! -f "${OBSERVATIONS_DIR}/ideas.json" ]] && cat > "${OBSERVATIONS_DIR}/ideas.json" << 'EOJSON'
+{
+  "ideas": {},
+  "detections": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize beliefs.json
+    [[ ! -f "${OBSERVATIONS_DIR}/beliefs.json" ]] && cat > "${OBSERVATIONS_DIR}/beliefs.json" << 'EOJSON'
+{
+  "beliefs": {},
+  "decisions": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize models.json
+    [[ ! -f "${OBSERVATIONS_DIR}/models.json" ]] && cat > "${OBSERVATIONS_DIR}/models.json" << 'EOJSON'
+{
+  "models": {},
+  "detections": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    # Initialize narratives.json
+    [[ ! -f "${OBSERVATIONS_DIR}/narratives.json" ]] && cat > "${OBSERVATIONS_DIR}/narratives.json" << 'EOJSON'
+{
+  "narratives": {},
+  "detections": [],
+  "lastUpdated": null
+}
+EOJSON
+
+    log "SUCCESS" "Observation files initialized (fallback)"
+fi
 
 # Verification
 log "INFO" "Verifying installation..."
@@ -202,6 +418,8 @@ ERRORS=0
 [[ -d "${PILOT_HOME}/memory" ]] || { log "ERROR" "Memory missing"; ((ERRORS++)); }
 [[ -d "${PILOT_DATA}/learnings" ]] || { log "ERROR" "Learnings directory missing"; ((ERRORS++)); }
 [[ -d "${PILOT_DATA}/patterns" ]] || { log "ERROR" "Patterns directory missing"; ((ERRORS++)); }
+[[ -d "${PILOT_DATA}/observations" ]] || { log "ERROR" "Observations directory missing"; ((ERRORS++)); }
+[[ -f "${PILOT_DATA}/observations/projects.json" ]] || { log "WARN" "Observation files not initialized"; }
 
 if [[ $ERRORS -eq 0 ]]; then
     log "SUCCESS" "Installation verified"
@@ -231,6 +449,7 @@ echo "   ├── learnings/            # Auto-captured learnings"
 echo "   ├── sessions/             # Session archives"
 echo "   ├── patterns/             # Pattern detection"
 echo "   ├── identity/             # Your context"
+echo "   ├── observations/         # Adaptive identity capture"
 echo "   └── logs/                 # System logs"
 echo ""
 echo "🚀 Next Steps:"

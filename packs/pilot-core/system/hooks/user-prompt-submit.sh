@@ -10,9 +10,15 @@ PATTERNS_DIR="${PILOT_DIR}/patterns"
 LOGS_DIR="${PILOT_DIR}/logs"
 HOT_MEMORY="${PILOT_HOME}/memory/hot"
 CACHE_DIR="${PILOT_HOME}/.cache"
+OBSERVATIONS_DIR="${PILOT_DIR}/observations"
 
 # Ensure directories exist
-mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" 2>/dev/null || true
+mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" "$OBSERVATIONS_DIR" 2>/dev/null || true
+
+# Source helper libraries (fail-safe)
+[[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/capture-controller.sh" ]] && source "${PILOT_HOME}/lib/capture-controller.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -122,6 +128,89 @@ echo "{\"timestamp\":\"$TIMESTAMP\",\"type\":\"prompt\",\"session_id\":\"$SESSIO
 echo "{\"timestamp\":\"$TIMESTAMP\",\"session_id\":\"$SESSION_ID\",\"phase\":\"$PHASE\"}" >> "$HOT_MEMORY/algorithm-phases.jsonl" 2>/dev/null || true
 
 # ============================================
+# ADAPTIVE IDENTITY CAPTURE: Run detectors based on tier
+# ============================================
+
+# Get current tier (default to standard)
+CURRENT_TIER=$(perf_get_tier 2>/dev/null || echo "standard")
+DETECTOR_OUTPUT=""
+
+# Run detectors based on tier (with performance tracking)
+run_detector() {
+    local detector_name="$1"
+    local detector_func="$2"
+    local start_time end_time duration
+    
+    start_time=$(date +%s%3N 2>/dev/null || date +%s)
+    
+    # Run detector (capture output)
+    local result
+    result=$($detector_func "$USER_PROMPT" 2>/dev/null) || true
+    
+    end_time=$(date +%s%3N 2>/dev/null || date +%s)
+    duration=$((end_time - start_time))
+    
+    # Record performance
+    perf_record "$detector_name" "$duration" 2>/dev/null || true
+    
+    # Return result if any
+    [[ -n "$result" ]] && echo "$result"
+}
+
+# Minimal tier: Project + Challenge detectors
+if [[ "$CURRENT_TIER" == "minimal" ]] || [[ "$CURRENT_TIER" == "standard" ]] || [[ "$CURRENT_TIER" == "full" ]]; then
+    # Challenge detection (look for error/blocker patterns)
+    if [[ -f "${PILOT_HOME}/detectors/challenge-detector.sh" ]]; then
+        source "${PILOT_HOME}/detectors/challenge-detector.sh" 2>/dev/null || true
+        
+        # Check for debugging context
+        if capture_detect_debugging "$USER_PROMPT" 2>/dev/null; then
+            # Extract challenge type from prompt
+            CHALLENGE_TYPE=$(echo "$USER_PROMPT" | head -c 100 | tr -d '\n')
+            challenge_record_blocker "$CHALLENGE_TYPE" "$USER_PROMPT" 2>/dev/null || true
+        fi
+    fi
+fi
+
+# Standard tier: Add Learning, Strategy, Idea, Belief detectors
+if [[ "$CURRENT_TIER" == "standard" ]] || [[ "$CURRENT_TIER" == "full" ]]; then
+    # Idea detection
+    if [[ -f "${PILOT_HOME}/detectors/idea-capturer.sh" ]]; then
+        source "${PILOT_HOME}/detectors/idea-capturer.sh" 2>/dev/null || true
+        IDEA_RESULT=$(idea_detect "$USER_PROMPT" 2>/dev/null) || true
+        if [[ -n "$IDEA_RESULT" ]]; then
+            DETECTOR_OUTPUT="$DETECTOR_OUTPUT
+💡 Idea detected - consider adding to IDEAS.md"
+        fi
+    fi
+fi
+
+# Full tier: Add Model, Narrative detectors
+if [[ "$CURRENT_TIER" == "full" ]]; then
+    # Model detection
+    if [[ -f "${PILOT_HOME}/detectors/model-detector.sh" ]]; then
+        source "${PILOT_HOME}/detectors/model-detector.sh" 2>/dev/null || true
+        MODEL_RESULT=$(model_detect "$USER_PROMPT" 2>/dev/null) || true
+    fi
+    
+    # Narrative detection
+    if [[ -f "${PILOT_HOME}/detectors/narrative-detector.sh" ]]; then
+        source "${PILOT_HOME}/detectors/narrative-detector.sh" 2>/dev/null || true
+        NARRATIVE_RESULT=$(narrative_detect "$USER_PROMPT" 2>/dev/null) || true
+        
+        # If limiting narrative detected, suggest reframe
+        if echo "$NARRATIVE_RESULT" | grep -q '"classification": "limiting"' 2>/dev/null; then
+            REFRAME=$(echo "$NARRATIVE_RESULT" | grep -o '"suggestedReframe": "[^"]*"' | sed 's/.*": "//;s/"$//')
+            [[ -n "$REFRAME" ]] && DETECTOR_OUTPUT="$DETECTOR_OUTPUT
+🔄 Consider reframing: $REFRAME"
+        fi
+    fi
+fi
+
+# Add detector output to context if any
+[[ -n "$DETECTOR_OUTPUT" ]] && OUTPUT_CONTEXT="$OUTPUT_CONTEXT$DETECTOR_OUTPUT"
+
+# ============================================
 # SELF-LEARNING: Pattern detection
 # ============================================
 
@@ -132,7 +221,8 @@ OUTPUT_CONTEXT=""
 
 # Check for repeated patterns
 if [ -f "$PATTERNS_LOG" ]; then
-    REPEAT_COUNT=$(grep -c "^$PROMPT_HASH|" "$PATTERNS_LOG" 2>/dev/null || echo "0")
+    REPEAT_COUNT=$(grep -c "^$PROMPT_HASH|" "$PATTERNS_LOG" 2>/dev/null | head -1 || echo "0")
+    REPEAT_COUNT=${REPEAT_COUNT:-0}
     if [ "$REPEAT_COUNT" -ge 2 ]; then
         OUTPUT_CONTEXT="$OUTPUT_CONTEXT
 💡 You've asked similar questions $REPEAT_COUNT times before.
