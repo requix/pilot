@@ -90,6 +90,63 @@ IDENTITY_COUNT=$(ls "$HOME/.kiro/pilot/identity/"*.md 2>/dev/null | wc -l | tr -
 jq . "$HOME/.kiro/pilot/config.json" > /dev/null 2>&1 && echo "✓ Valid JSON" || echo "❌ Invalid JSON"
 ```
 
+### 8. Self-Learning Data Directory
+
+```bash
+# Self-learning data directory
+[ -d "$HOME/.pilot" ] && echo "✓" || echo "❌"
+[ -d "$HOME/.pilot/learnings" ] && echo "✓" || echo "❌"
+[ -d "$HOME/.pilot/identity" ] && echo "✓" || echo "❌"
+[ -d "$HOME/.pilot/observations" ] && echo "✓" || echo "❌"
+[ -d "$HOME/.pilot/logs" ] && echo "✓" || echo "❌"
+```
+
+### 9. Observation System Health
+
+```bash
+# Check observation files exist and are valid JSON
+echo "=== Observation System Health ==="
+
+for file in projects.json challenges.json patterns.json prompts.json time-allocation.json goals.json working-style.json evolution.json; do
+  if [ -f "$HOME/.pilot/observations/$file" ]; then
+    if jq . "$HOME/.pilot/observations/$file" > /dev/null 2>&1; then
+      echo "✓ $file (valid)"
+    else
+      echo "⚠ $file (invalid JSON)"
+    fi
+  else
+    echo "○ $file (not created yet)"
+  fi
+done
+```
+
+### 10. Lib Files (Detectors and Utilities)
+
+```bash
+# Check lib files
+LIB_COUNT=$(ls "$HOME/.kiro/pilot/lib/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+echo "Lib files: $LIB_COUNT"
+[ "$LIB_COUNT" -ge 10 ] && echo "✓ Sufficient lib files" || echo "⚠ Expected 10+, found $LIB_COUNT"
+
+# Check detectors
+DETECTOR_COUNT=$(ls "$HOME/.kiro/pilot/detectors/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+echo "Detectors: $DETECTOR_COUNT"
+[ "$DETECTOR_COUNT" -ge 8 ] && echo "✓ All detectors present" || echo "⚠ Expected 8, found $DETECTOR_COUNT"
+```
+
+### 11. Performance Metrics
+
+```bash
+# Check performance tracking
+if [ -f "$HOME/.pilot/observations/performance.json" ]; then
+  TIER=$(jq -r '.currentTier // "unknown"' "$HOME/.pilot/observations/performance.json" 2>/dev/null)
+  echo "Current tier: $TIER"
+  
+  DISABLED=$(jq -r '.disabledDetectors | length' "$HOME/.pilot/observations/performance.json" 2>/dev/null)
+  echo "Disabled detectors: $DISABLED"
+fi
+```
+
 ---
 
 ## Installation Verification Checklist
@@ -100,10 +157,16 @@ After installation, confirm:
 - [ ] `~/.kiro/pilot/identity/` has 10 .md files
 - [ ] `~/.kiro/pilot/resources/` has 2 .md files
 - [ ] `~/.kiro/pilot/memory/` has hot/warm/cold subdirectories
+- [ ] `~/.kiro/pilot/lib/` has 10+ .sh files
+- [ ] `~/.kiro/pilot/detectors/` has 8 .sh files
 - [ ] `~/.kiro/agents/pilot.json` exists and is valid JSON
 - [ ] `~/.kiro/hooks/pilot/` has 5 executable .sh files
 - [ ] `~/.kiro/steering/pilot/` has steering files
 - [ ] `~/.kiro/pilot/config.json` exists
+- [ ] `~/.pilot/` self-learning directory exists
+- [ ] `~/.pilot/observations/` has observation JSON files
+- [ ] `~/.pilot/identity/` has identity files or templates
+- [ ] `~/.pilot/learnings/` directory exists
 
 ---
 
@@ -200,6 +263,7 @@ echo ""
 
 PASS=0
 FAIL=0
+WARN=0
 
 check() {
   if [ "$1" = "true" ]; then
@@ -211,16 +275,28 @@ check() {
   fi
 }
 
-# Directories
+warn() {
+  echo "⚠ $1"
+  ((WARN++))
+}
+
+# Kiro Integration Directories
+echo "--- Kiro Integration ---"
 check "$([ -d "$HOME/.kiro/pilot" ] && echo true)" "PILOT home directory"
-check "$([ -d "$HOME/.kiro/pilot/identity" ] && echo true)" "Identity directory"
+check "$([ -d "$HOME/.kiro/pilot/identity" ] && echo true)" "Identity templates"
 check "$([ -d "$HOME/.kiro/pilot/resources" ] && echo true)" "Resources directory"
 check "$([ -d "$HOME/.kiro/pilot/memory" ] && echo true)" "Memory directory"
+check "$([ -d "$HOME/.kiro/pilot/lib" ] && echo true)" "Lib directory"
+check "$([ -d "$HOME/.kiro/pilot/detectors" ] && echo true)" "Detectors directory"
 
 # Agent
+echo ""
+echo "--- Agent Configuration ---"
 check "$([ -f "$HOME/.kiro/agents/pilot.json" ] && echo true)" "Agent configuration"
 
 # Hooks
+echo ""
+echo "--- Hooks ---"
 check "$([ -f "$HOME/.kiro/hooks/pilot/agent-spawn.sh" ] && echo true)" "agent-spawn.sh"
 check "$([ -f "$HOME/.kiro/hooks/pilot/user-prompt-submit.sh" ] && echo true)" "user-prompt-submit.sh"
 check "$([ -f "$HOME/.kiro/hooks/pilot/pre-tool-use.sh" ] && echo true)" "pre-tool-use.sh"
@@ -228,14 +304,51 @@ check "$([ -f "$HOME/.kiro/hooks/pilot/post-tool-use.sh" ] && echo true)" "post-
 check "$([ -f "$HOME/.kiro/hooks/pilot/stop.sh" ] && echo true)" "stop.sh"
 
 # Resources
+echo ""
+echo "--- Resources ---"
 check "$([ -f "$HOME/.kiro/pilot/resources/the-algorithm.md" ] && echo true)" "the-algorithm.md"
 check "$([ -f "$HOME/.kiro/pilot/resources/pilot-principles.md" ] && echo true)" "pilot-principles.md"
 
 # Steering
+echo ""
+echo "--- Steering ---"
 check "$([ -f "$HOME/.kiro/steering/pilot/pilot-core-knowledge.md" ] && echo true)" "Steering files"
 
+# Self-Learning Data
 echo ""
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "--- Self-Learning Data (~/.pilot/) ---"
+check "$([ -d "$HOME/.pilot" ] && echo true)" "Self-learning home"
+check "$([ -d "$HOME/.pilot/learnings" ] && echo true)" "Learnings directory"
+check "$([ -d "$HOME/.pilot/identity" ] && echo true)" "Identity directory"
+check "$([ -d "$HOME/.pilot/observations" ] && echo true)" "Observations directory"
 
-[ $FAIL -eq 0 ] && echo "✓ All checks passed!" || echo "❌ Some checks failed"
+# Observation Files
+echo ""
+echo "--- Observation System ---"
+for file in projects.json challenges.json prompts.json; do
+  if [ -f "$HOME/.pilot/observations/$file" ]; then
+    if jq . "$HOME/.pilot/observations/$file" > /dev/null 2>&1; then
+      check "true" "$file"
+    else
+      warn "$file exists but invalid JSON"
+    fi
+  else
+    warn "$file not yet created"
+  fi
+done
+
+# Lib and Detector counts
+echo ""
+echo "--- Components ---"
+LIB_COUNT=$(ls "$HOME/.kiro/pilot/lib/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+DETECTOR_COUNT=$(ls "$HOME/.kiro/pilot/detectors/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+check "$([ "$LIB_COUNT" -ge 10 ] && echo true)" "Lib files ($LIB_COUNT)"
+check "$([ "$DETECTOR_COUNT" -ge 8 ] && echo true)" "Detectors ($DETECTOR_COUNT)"
+
+echo ""
+echo "========================================="
+echo "Results: $PASS passed, $FAIL failed, $WARN warnings"
+echo "========================================="
+
+[ $FAIL -eq 0 ] && echo "✓ All critical checks passed!" || echo "❌ Some checks failed"
 ```
