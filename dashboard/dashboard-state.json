@@ -1,0 +1,150 @@
+{
+  "timestamp": "2026-01-16T15:05:30.603Z",
+  "sessions": [
+    {
+      "id": "pilot-1768571937-88009",
+      "phase": "LEARN",
+      "updated": 1768575765,
+      "color": "#4ECDC4",
+      "startTime": 1768575764,
+      "commandCount": 1,
+      "phaseHistory": []
+    },
+    {
+      "id": "pilot-1768575780-7565",
+      "phase": "OBSERVE",
+      "updated": 1768575780,
+      "color": "#45B7D1",
+      "startTime": 1768575780,
+      "commandCount": 1,
+      "phaseHistory": []
+    },
+    {
+      "id": "pilot-1768575779-7565",
+      "phase": "UNKNOWN",
+      "updated": 1768575785,
+      "color": "#96CEB4",
+      "startTime": 1768575784,
+      "commandCount": 1,
+      "phaseHistory": []
+    },
+    {
+      "id": "pilot-1768575799-8122",
+      "phase": "EXECUTE",
+      "updated": 1768575839,
+      "color": "#FFEAA7",
+      "startTime": 1768575799,
+      "commandCount": 1,
+      "phaseHistory": [
+        {
+          "phase": "UNKNOWN",
+          "timestamp": 1768575821643
+        },
+        {
+          "phase": "EXECUTE",
+          "timestamp": 1768575839211
+        }
+      ]
+    }
+  ],
+  "sessionHistory": [
+    {
+      "id": "pilot-1768571937-88009",
+      "phase": "UNKNOWN",
+      "updated": 1768575759,
+      "color": "#FF6B6B",
+      "startTime": 1768575737,
+      "commandCount": 1,
+      "phaseHistory": [
+        {
+          "phase": "VERIFY",
+          "timestamp": 1768575754308
+        },
+        {
+          "phase": "UNKNOWN",
+          "timestamp": 1768575760327
+        }
+      ]
+    }
+  ],
+  "recentLearnings": [
+    {
+      "timestamp": 1768569981,
+      "sessionId": "test-session-77442",
+      "title": "Test learning from emission script",
+      "category": "bash",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570712,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570727,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570737,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570747,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570754,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570786,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768571272,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768571485,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768572261,
+      "sessionId": "pilot-1768571937-88009",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    }
+  ],
+  "learningStats": {
+    "totalCount": 14,
+    "categoryCounts": {
+      "bash": 5,
+      "general": 9
+    },
+    "recentRate": 14
+  }
+}

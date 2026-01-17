@@ -11,6 +11,9 @@ DEBUG_DIR="${PILOT_HOME}/debug"
 # Ensure directories exist
 mkdir -p "$HOT_MEMORY" "$METRICS_DIR" "$DEBUG_DIR" 2>/dev/null || true
 
+# Source dashboard emission library (fail-safe)
+[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
+
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
 
@@ -83,6 +86,14 @@ if [ -f "$TOOL_LOG" ]; then
              grep -o '"tool":"[^"]*"' | sed 's/"tool":"//;s/"$//' | tr '\n' ',' | sed 's/,$//' || true)
     if [ -n "$RECENT" ]; then
         echo "{\"timestamp\":\"$TIMESTAMP\",\"session_id\":\"$SESSION_ID\",\"pattern\":\"$RECENT\"}" >> "$HOT_MEMORY/tool-patterns.jsonl" 2>/dev/null || true
+    fi
+fi
+
+# Dashboard integration - emit learning if fs_write to learnings directory
+if command -v emit_learning >/dev/null 2>&1; then
+    if [[ "$TOOL_NAME" == "fs_write" ]] && echo "$input_json" | grep -q "learnings" 2>/dev/null; then
+        LEARNING_TITLE=$(echo "$input_json" | jq -r '.parameters.summary // "Learning captured"' 2>/dev/null || echo "Learning captured")
+        emit_learning "$LEARNING_TITLE" 2>/dev/null || true
     fi
 fi
 

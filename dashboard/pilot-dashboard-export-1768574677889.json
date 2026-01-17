@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-01-16T14:44:37.889Z",
+  "sessions": [
+    {
+      "id": "pilot-1768571937-88009",
+      "phase": "LEARN",
+      "updated": 1768574642,
+      "color": "#FF6B6B",
+      "startTime": 1768574642,
+      "commandCount": 1,
+      "phaseHistory": []
+    }
+  ],
+  "sessionHistory": [],
+  "recentLearnings": [
+    {
+      "timestamp": 1768569981,
+      "sessionId": "test-session-77442",
+      "title": "Test learning from emission script",
+      "category": "bash",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570712,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570727,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570737,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570747,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570754,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768570786,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768571272,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768571485,
+      "sessionId": "pilot-1768570649-80024",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    },
+    {
+      "timestamp": 1768572261,
+      "sessionId": "pilot-1768571937-88009",
+      "title": "Learning captured",
+      "category": "general",
+      "tags": []
+    }
+  ],
+  "learningStats": {
+    "totalCount": 14,
+    "categoryCounts": {
+      "bash": 5,
+      "general": 9
+    },
+    "recentRate": 14
+  }
+}

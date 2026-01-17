@@ -18,7 +18,9 @@ mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" "$OBSERVATIONS_DIR" 2>/dev/nu
 # Source helper libraries (fail-safe)
 [[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/capture-controller.sh" ]] && source "${PILOT_HOME}/lib/capture-controller.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -117,6 +119,9 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Detect algorithm phase
 PHASE=$(detect_phase "$USER_PROMPT")
+
+# Emit phase to dashboard (if emitter is available)
+type dashboard_emit_phase &>/dev/null && dashboard_emit_phase "$PHASE"
 
 # Escape prompt for JSON (truncate, escape quotes/newlines)
 PROMPT_ESCAPED=$(echo "$USER_PROMPT" | head -c 200 | sed 's/\\/\\\\/g;s/"/\\"/g' | tr '\n' ' ')
@@ -266,6 +271,12 @@ fi
 if [ -n "$OUTPUT_CONTEXT" ]; then
     echo "<pilot-context>$OUTPUT_CONTEXT
 </pilot-context>"
+fi
+
+# Dashboard integration - emit phase based on user prompt
+if command -v detect_phase >/dev/null 2>&1 && command -v emit_phase >/dev/null 2>&1; then
+    DETECTED_PHASE=$(detect_phase "$USER_PROMPT" 2>/dev/null || echo "EXECUTE")
+    emit_phase "$DETECTED_PHASE" 2>/dev/null || true
 fi
 
 exit 0

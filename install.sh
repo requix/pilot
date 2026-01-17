@@ -149,6 +149,27 @@ log "SUCCESS" "Hooks installed (5 scripts)"
 # Step 4a: Install lib files
 log "INFO" "Installing lib files..."
 mkdir -p "${PILOT_HOME}/lib"
+cp "${SCRIPT_DIR}/lib/"*.sh "${PILOT_HOME}/lib/" 2>/dev/null || true
+
+# Step 4b: Install identity capture system
+log "INFO" "Installing identity capture system..."
+mkdir -p "${PILOT_HOME}/hooks"
+mkdir -p "${PILOT_HOME}/scripts"
+mkdir -p "${PILOT_HOME}/config"
+
+# Copy identity capture hooks
+cp "${SCRIPT_DIR}/hooks/"*.sh "${PILOT_HOME}/hooks/" 2>/dev/null || true
+chmod +x "${PILOT_HOME}/hooks/"*.sh 2>/dev/null || true
+
+# Copy identity scripts
+cp "${SCRIPT_DIR}/scripts/"*.sh "${PILOT_HOME}/scripts/" 2>/dev/null || true
+chmod +x "${PILOT_HOME}/scripts/"*.sh 2>/dev/null || true
+
+# Copy configuration
+cp "${SCRIPT_DIR}/config/"*.json "${PILOT_HOME}/config/" 2>/dev/null || true
+
+log "SUCCESS" "Identity capture system installed"
+mkdir -p "${PILOT_HOME}/lib"
 if [[ -d "${PACK_DIR}/system/lib" ]]; then
     cp "${PACK_DIR}/system/lib/"*.sh "${PILOT_HOME}/lib/" 2>/dev/null || true
     chmod +x "${PILOT_HOME}/lib/"*.sh 2>/dev/null || true

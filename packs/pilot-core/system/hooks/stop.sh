@@ -19,7 +19,11 @@ mkdir -p "$LEARNINGS_DIR" "$SESSIONS_DIR" "$LOGS_DIR" "$HOT_MEMORY" "$COLD_MEMOR
 
 # Source helper libraries (fail-safe)
 [[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/cross-file-intelligence.sh" ]] && source "${PILOT_HOME}/lib/cross-file-intelligence.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -75,8 +79,45 @@ detect_learning() {
 # Extract learning summary (first 500 chars of relevant content)
 extract_learning_summary() {
     local text="$1"
-    # Get first 500 characters, clean up
-    echo "$text" | head -c 500 | tr '\n' ' ' | sed 's/  */ /g'
+    
+    # Try to extract meaningful learning from common patterns
+    local learning=""
+    
+    # Look for "✅" completion patterns (common in our responses)
+    learning=$(echo "$text" | grep -i "✅" | head -1 | sed 's/.*✅[[:space:]]*//' | head -c 80)
+    
+    # Look for "Fixed" or "Implemented" patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -iE "(fixed|implemented|added|created)" | head -1 | head -c 80)
+    fi
+    
+    # Look for "Learning:" or "Learned" patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -i "learning:" | head -1 | sed 's/.*learning://i' | sed 's/^[[:space:]]*//' | head -c 80)
+    fi
+    
+    # Look for "discovered that..." patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -i "discovered" | head -1 | sed 's/.*discovered/Discovered/' | head -c 80)
+    fi
+    
+    # Look for "found that..." patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -i "found that" | head -1 | sed 's/.*found that/Found that/' | head -c 80)
+    fi
+    
+    # Look for solution patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -i "solution\|fix\|resolved" | head -1 | head -c 80)
+    fi
+    
+    # Fallback to first meaningful sentence (avoid generic responses)
+    if [ -z "$learning" ] || echo "$learning" | grep -qi "learning captured"; then
+        learning=$(echo "$text" | grep -v "learning captured" | head -1 | head -c 80)
+    fi
+    
+    # Clean up and return
+    echo "$learning" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[*#-]//g'
 }
 
 SESSION_ID=$(get_session_id "$input_json")
@@ -118,6 +159,9 @@ EOF
         # Log the capture
         echo "[$(date -Iseconds)] [stop] [INFO] Learning captured: $LEARNING_FILE" >> "$LOGS_DIR/pilot.log" 2>/dev/null || true
         
+        # Emit to dashboard
+        type dashboard_emit_learning &>/dev/null && dashboard_emit_learning "$LEARNING_SUMMARY"
+        
         # Output confirmation (visible to user)
         echo ""
         echo "<pilot-learning-captured>"
@@ -126,6 +170,9 @@ EOF
         echo "</pilot-learning-captured>"
     fi
 fi
+
+# Cleanup dashboard session on stop
+type dashboard_cleanup &>/dev/null && dashboard_cleanup
 
 # ============================================
 # SESSION METRICS (existing functionality)
@@ -243,4 +290,10 @@ fi
 
 echo "✅ Session archived: $ARCHIVE_DIR/summary-$SESSION_TIME.md"
 [ "$TODAYS_LEARNINGS" -gt 0 ] && echo "📚 Learnings captured today: $TODAYS_LEARNINGS"
+
+# Dashboard integration - emit LEARN phase on session completion
+if command -v emit_phase >/dev/null 2>&1; then
+    emit_phase "LEARN" 2>/dev/null || true
+fi
+
 exit 0

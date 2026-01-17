@@ -12,6 +12,9 @@ CACHE_DIR="${PILOT_HOME}/.cache"
 METRICS_DIR="${PILOT_HOME}/metrics"
 OBSERVATIONS_DIR="${PILOT_DIR}/observations"
 
+# Source dashboard emitter early
+[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
+
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
 
@@ -82,6 +85,9 @@ IDENTITY_CONTEXT=""
 if [ -f "$IDENTITY_DIR/context.md" ]; then
     IDENTITY_CONTEXT=$(cat "$IDENTITY_DIR/context.md" 2>/dev/null | head -50)
 fi
+
+# Emit initial OBSERVE phase to dashboard
+type dashboard_emit_phase &>/dev/null && dashboard_emit_phase "OBSERVE"
 
 # Get recent learnings (last 7 days, max 5)
 RECENT_LEARNINGS=""
@@ -172,5 +178,10 @@ cat << EOF
 - Learnings are automatically captured when you solve problems
 </pilot-context>
 EOF
+
+# Dashboard integration - emit OBSERVE phase on session start
+if command -v emit_phase >/dev/null 2>&1; then
+    emit_phase "OBSERVE" 2>/dev/null || true
+fi
 
 exit 0
