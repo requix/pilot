@@ -46,6 +46,22 @@ The installer will:
 ./verify.sh
 ```
 
+### Dashboard (Optional)
+
+PILOT includes a modern TUI dashboard for real-time monitoring:
+
+```bash
+cd src/dashboard-ink
+bun install
+bun run dev
+```
+
+Features:
+- Real-time session monitoring
+- Learning capture visualization
+- Universal Algorithm phase tracking
+- Statistics and metrics
+
 ### Start Using PILOT
 
 1. Open Kiro CLI
@@ -72,6 +88,11 @@ PILOT uses two locations:
 ├── agents/pilot.json       # Agent configuration
 ├── hooks/pilot/            # Hook scripts
 └── steering/pilot/         # Steering files
+
+src/dashboard-ink/          # Optional TUI dashboard
+├── src/                    # Dashboard source code
+├── bin/                    # Built executables
+└── docs/                   # Dashboard documentation
 ```
 
 **Important:** Learnings are saved to `~/.pilot/learnings/`, not `~/.kiro/pilot/`.

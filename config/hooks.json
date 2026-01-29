@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": "~/.kiro/pilot/hooks/post-tool-use.sh",
+        "args": ["{{toolName}}", "{{toolArgs}}", "{{toolResult}}"],
+        "timeout": 5000
+      }
+    ],
+    "userPromptSubmit": [
+      {
+        "command": "~/.kiro/pilot/hooks/post-conversation.sh", 
+        "args": ["{{userPrompt}}", "{{sessionId}}"],
+        "timeout": 5000
+      }
+    ]
+  },
+  "identity": {
+    "autoCapture": true,
+    "updateInterval": 300
+  }
+}

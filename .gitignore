@@ -1,0 +1,27 @@
+# PILOT Identity & Personal Data (if accidentally copied to repo)
+.pilot/
+identity/
+learnings/
+
+# System files
+.DS_Store
+.kiro/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node modules (if any)
+node_modules/
+
+# Build artifacts
+dist/
+build/

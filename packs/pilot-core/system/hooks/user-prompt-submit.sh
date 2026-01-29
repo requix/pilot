@@ -19,6 +19,8 @@ mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" "$OBSERVATIONS_DIR" 2>/dev/nu
 [[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/capture-controller.sh" ]] && source "${PILOT_HOME}/lib/capture-controller.sh" 2>/dev/null || true
+# Use only dashboard-emitter.sh (consolidated emitter library)
+[[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -52,22 +54,22 @@ detect_phase() {
     local lower=$(echo "$prompt" | tr '[:upper:]' '[:lower:]')
     
     case "$lower" in
-        *"what is"*|*"show me"*|*"explain"*|*"describe"*|*"current state"*|*"understand"*)
+        *"what is"*|*"show me"*|*"explain"*|*"describe"*|*"current state"*|*"understand"*|*"observe"*|*"check status"*|*"examine"*)
             echo "OBSERVE" ;;
-        *"how could"*|*"options"*|*"approaches"*|*"alternatives"*|*"ideas"*|*"think about"*)
+        *"how could"*|*"options"*|*"approaches"*|*"alternatives"*|*"ideas"*|*"think about"*|*"consider"*|*"brainstorm"*)
             echo "THINK" ;;
-        *"plan"*|*"strategy"*|*"steps"*|*"roadmap"*)
+        *"plan"*|*"strategy"*|*"steps"*|*"roadmap"*|*"sequence"*|*"order"*)
             echo "PLAN" ;;
-        *"criteria"*|*"success"*|*"define"*|*"requirements"*|*"spec"*)
+        *"criteria"*|*"success"*|*"define"*|*"requirements"*|*"spec"*|*"should"*|*"must"*|*"test plan"*|*"what success looks like"*|*"how will we know"*|*"acceptance criteria"*)
             echo "BUILD" ;;
-        *"do it"*|*"implement"*|*"create"*|*"make"*|*"execute"*|*"run"*|*"fix"*|*"change"*|*"update"*|*"add"*|*"remove"*)
+        *"do it"*|*"implement"*|*"create"*|*"make"*|*"execute"*|*"run"*|*"fix"*|*"change"*|*"update"*|*"add"*|*"remove"*|*"build"*|*"deploy"*)
             echo "EXECUTE" ;;
-        *"test"*|*"verify"*|*"check"*|*"validate"*|*"confirm"*|*"works"*)
+        *"test"*|*"verify"*|*"check"*|*"validate"*|*"confirm"*|*"works"*|*"does it work"*|*"is it working"*|*"did it work"*|*"result"*|*"output"*)
             echo "VERIFY" ;;
-        *"learned"*|*"takeaway"*|*"insight"*|*"summary"*|*"what worked"*)
+        *"learned"*|*"takeaway"*|*"insight"*|*"summary"*|*"what worked"*|*"lesson"*|*"conclusion"*)
             echo "LEARN" ;;
         *)
-            echo "UNKNOWN" ;;
+            echo "EXECUTE" ;;
     esac
 }
 
@@ -117,6 +119,9 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Detect algorithm phase
 PHASE=$(detect_phase "$USER_PROMPT")
+
+# Emit phase to dashboard (if emitter is available)
+type dashboard_emit_phase &>/dev/null && dashboard_emit_phase "$PHASE"
 
 # Escape prompt for JSON (truncate, escape quotes/newlines)
 PROMPT_ESCAPED=$(echo "$USER_PROMPT" | head -c 200 | sed 's/\\/\\\\/g;s/"/\\"/g' | tr '\n' ' ')
@@ -267,5 +272,8 @@ if [ -n "$OUTPUT_CONTEXT" ]; then
     echo "<pilot-context>$OUTPUT_CONTEXT
 </pilot-context>"
 fi
+
+# Note: Identity capture is handled by AI during conversation, not by regex patterns.
+# See steering/identity-learning.md for guidance.
 
 exit 0
