@@ -20,9 +20,8 @@ mkdir -p "$LEARNINGS_DIR" "$SESSIONS_DIR" "$LOGS_DIR" "$HOT_MEMORY" "$COLD_MEMOR
 # Source helper libraries (fail-safe)
 [[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/cross-file-intelligence.sh" ]] && source "${PILOT_HOME}/lib/cross-file-intelligence.sh" 2>/dev/null || true
+# Use only dashboard-emitter.sh (consolidated emitter library)
 [[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
@@ -76,52 +75,94 @@ detect_learning() {
     [ "$matches" -ge 2 ] && echo "true" || echo "false"
 }
 
-# Extract learning summary (first 500 chars of relevant content)
+# Extract learning summary (first meaningful sentence)
 extract_learning_summary() {
     local text="$1"
-    
+
     # Try to extract meaningful learning from common patterns
     local learning=""
-    
+
+    # Look for "the issue was" / "the problem was" patterns (root cause)
+    learning=$(echo "$text" | grep -ioE "(the issue was|the problem was|root cause was)[^.]*" | head -1 | head -c 100)
+
+    # Look for "fixed by" / "solved by" patterns
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | grep -ioE "(fixed by|solved by|resolved by)[^.]*" | head -1 | head -c 100)
+    fi
+
     # Look for "✅" completion patterns (common in our responses)
-    learning=$(echo "$text" | grep -i "✅" | head -1 | sed 's/.*✅[[:space:]]*//' | head -c 80)
-    
-    # Look for "Fixed" or "Implemented" patterns
     if [ -z "$learning" ]; then
-        learning=$(echo "$text" | grep -iE "(fixed|implemented|added|created)" | head -1 | head -c 80)
+        learning=$(echo "$text" | grep "✅" | head -1 | sed 's/.*✅[[:space:]]*//' | head -c 100)
     fi
-    
-    # Look for "Learning:" or "Learned" patterns
+
+    # Look for "Fixed:" or "Implemented:" patterns
     if [ -z "$learning" ]; then
-        learning=$(echo "$text" | grep -i "learning:" | head -1 | sed 's/.*learning://i' | sed 's/^[[:space:]]*//' | head -c 80)
+        learning=$(echo "$text" | grep -iE "^(fixed|implemented|added|created|resolved):" | head -1 | head -c 100)
     fi
-    
+
     # Look for "discovered that..." patterns
     if [ -z "$learning" ]; then
-        learning=$(echo "$text" | grep -i "discovered" | head -1 | sed 's/.*discovered/Discovered/' | head -c 80)
+        learning=$(echo "$text" | grep -ioE "discovered (that )?[^.]{10,}" | head -1 | head -c 100)
     fi
-    
+
     # Look for "found that..." patterns
     if [ -z "$learning" ]; then
-        learning=$(echo "$text" | grep -i "found that" | head -1 | sed 's/.*found that/Found that/' | head -c 80)
+        learning=$(echo "$text" | grep -ioE "found that [^.]{10,}" | head -1 | head -c 100)
     fi
-    
-    # Look for solution patterns
+
+    # Look for "learned:" patterns
     if [ -z "$learning" ]; then
-        learning=$(echo "$text" | grep -i "solution\|fix\|resolved" | head -1 | head -c 80)
+        learning=$(echo "$text" | grep -i "learning:" | head -1 | sed 's/.*learning://i' | sed 's/^[[:space:]]*//' | head -c 100)
     fi
-    
-    # Fallback to first meaningful sentence (avoid generic responses)
-    if [ -z "$learning" ] || echo "$learning" | grep -qi "learning captured"; then
-        learning=$(echo "$text" | grep -v "learning captured" | head -1 | head -c 80)
+
+    # Fallback: extract first sentence that looks meaningful (>20 chars, not generic)
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | tr '\n' ' ' | grep -oE '[A-Z][^.!?]{20,}[.!?]' | head -1 | head -c 100)
     fi
-    
-    # Clean up and return
-    echo "$learning" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[*#-]//g'
+
+    # Final fallback: first 80 chars if nothing else worked
+    if [ -z "$learning" ]; then
+        learning=$(echo "$text" | tr '\n' ' ' | head -c 80)
+    fi
+
+    # Clean up: remove markdown, extra spaces, leading/trailing whitespace
+    echo "$learning" | sed 's/[*#`]//g' | tr -s ' ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//'
 }
 
 SESSION_ID=$(get_session_id "$input_json")
 RESPONSE=$(get_response "$input_json")
+
+# Detect phase from response content
+detect_phase_from_response() {
+    local response="$1"
+    local lower_response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+    
+    # VERIFY phase indicators in responses
+    if echo "$lower_response" | grep -qE "(✅|❌|passed|failed|test.*result|verification|validated|confirmed|checked|works|doesn't work|success|error|issue resolved|problem fixed)"; then
+        echo "VERIFY"
+        return
+    fi
+    
+    # BUILD phase indicators in responses  
+    if echo "$lower_response" | grep -qE "(success criteria|requirements|define.*success|what.*looks like|criteria.*met|specification|test plan)"; then
+        echo "BUILD"
+        return
+    fi
+    
+    # LEARN phase indicators
+    if echo "$lower_response" | grep -qE "(learned|insight|lesson|takeaway|conclusion|discovered|found that|realized|key finding)"; then
+        echo "LEARN"
+        return
+    fi
+}
+
+# Emit phase based on response content
+if [ -n "$RESPONSE" ] && command -v dashboard_emit_phase >/dev/null 2>&1; then
+    DETECTED_PHASE=$(detect_phase_from_response "$RESPONSE")
+    if [ -n "$DETECTED_PHASE" ]; then
+        dashboard_emit_phase "$DETECTED_PHASE" 2>/dev/null || true
+    fi
+fi
 
 # Archive directory
 ARCHIVE_DIR="$COLD_MEMORY/sessions/$SESSION_DATE"
@@ -291,9 +332,7 @@ fi
 echo "✅ Session archived: $ARCHIVE_DIR/summary-$SESSION_TIME.md"
 [ "$TODAYS_LEARNINGS" -gt 0 ] && echo "📚 Learnings captured today: $TODAYS_LEARNINGS"
 
-# Dashboard integration - emit LEARN phase on session completion
-if command -v emit_phase >/dev/null 2>&1; then
-    emit_phase "LEARN" 2>/dev/null || true
-fi
+# Emit LEARN phase to dashboard on session completion
+type dashboard_emit_phase &>/dev/null && dashboard_emit_phase "LEARN"
 
 exit 0

@@ -18,8 +18,8 @@ mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" "$OBSERVATIONS_DIR" 2>/dev/nu
 # Source helper libraries (fail-safe)
 [[ -f "${PILOT_HOME}/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/lib/json-helpers.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/lib/performance-manager.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
 [[ -f "${PILOT_HOME}/lib/capture-controller.sh" ]] && source "${PILOT_HOME}/lib/capture-controller.sh" 2>/dev/null || true
+# Use only dashboard-emitter.sh (consolidated emitter library)
 [[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
@@ -54,22 +54,22 @@ detect_phase() {
     local lower=$(echo "$prompt" | tr '[:upper:]' '[:lower:]')
     
     case "$lower" in
-        *"what is"*|*"show me"*|*"explain"*|*"describe"*|*"current state"*|*"understand"*)
+        *"what is"*|*"show me"*|*"explain"*|*"describe"*|*"current state"*|*"understand"*|*"observe"*|*"check status"*|*"examine"*)
             echo "OBSERVE" ;;
-        *"how could"*|*"options"*|*"approaches"*|*"alternatives"*|*"ideas"*|*"think about"*)
+        *"how could"*|*"options"*|*"approaches"*|*"alternatives"*|*"ideas"*|*"think about"*|*"consider"*|*"brainstorm"*)
             echo "THINK" ;;
-        *"plan"*|*"strategy"*|*"steps"*|*"roadmap"*)
+        *"plan"*|*"strategy"*|*"steps"*|*"roadmap"*|*"sequence"*|*"order"*)
             echo "PLAN" ;;
-        *"criteria"*|*"success"*|*"define"*|*"requirements"*|*"spec"*)
+        *"criteria"*|*"success"*|*"define"*|*"requirements"*|*"spec"*|*"should"*|*"must"*|*"test plan"*|*"what success looks like"*|*"how will we know"*|*"acceptance criteria"*)
             echo "BUILD" ;;
-        *"do it"*|*"implement"*|*"create"*|*"make"*|*"execute"*|*"run"*|*"fix"*|*"change"*|*"update"*|*"add"*|*"remove"*)
+        *"do it"*|*"implement"*|*"create"*|*"make"*|*"execute"*|*"run"*|*"fix"*|*"change"*|*"update"*|*"add"*|*"remove"*|*"build"*|*"deploy"*)
             echo "EXECUTE" ;;
-        *"test"*|*"verify"*|*"check"*|*"validate"*|*"confirm"*|*"works"*)
+        *"test"*|*"verify"*|*"check"*|*"validate"*|*"confirm"*|*"works"*|*"does it work"*|*"is it working"*|*"did it work"*|*"result"*|*"output"*)
             echo "VERIFY" ;;
-        *"learned"*|*"takeaway"*|*"insight"*|*"summary"*|*"what worked"*)
+        *"learned"*|*"takeaway"*|*"insight"*|*"summary"*|*"what worked"*|*"lesson"*|*"conclusion"*)
             echo "LEARN" ;;
         *)
-            echo "UNKNOWN" ;;
+            echo "EXECUTE" ;;
     esac
 }
 
@@ -273,10 +273,7 @@ if [ -n "$OUTPUT_CONTEXT" ]; then
 </pilot-context>"
 fi
 
-# Dashboard integration - emit phase based on user prompt
-if command -v detect_phase >/dev/null 2>&1 && command -v emit_phase >/dev/null 2>&1; then
-    DETECTED_PHASE=$(detect_phase "$USER_PROMPT" 2>/dev/null || echo "EXECUTE")
-    emit_phase "$DETECTED_PHASE" 2>/dev/null || true
-fi
+# Note: Identity capture is handled by AI during conversation, not by regex patterns.
+# See steering/identity-learning.md for guidance.
 
 exit 0

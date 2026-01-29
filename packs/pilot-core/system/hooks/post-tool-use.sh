@@ -12,7 +12,15 @@ DEBUG_DIR="${PILOT_HOME}/debug"
 mkdir -p "$HOT_MEMORY" "$METRICS_DIR" "$DEBUG_DIR" 2>/dev/null || true
 
 # Source dashboard emission library (fail-safe)
-[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
+if [[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]]; then
+    source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
+    # Test if function is available
+    if declare -f dashboard_emit_phase >/dev/null 2>&1; then
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) dashboard_emit_phase function available" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
+    else
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) dashboard_emit_phase function NOT available" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
+    fi
+fi
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -95,6 +103,70 @@ if command -v emit_learning >/dev/null 2>&1; then
         LEARNING_TITLE=$(echo "$input_json" | jq -r '.parameters.summary // "Learning captured"' 2>/dev/null || echo "Learning captured")
         emit_learning "$LEARNING_TITLE" 2>/dev/null || true
     fi
+fi
+
+# Phase detection based on tool usage and content
+detect_phase_from_tool() {
+    local tool="$1"
+    local content="$2"
+    local lower_content=$(echo "$content" | tr '[:upper:]' '[:lower:]')
+    
+    # BUILD phase indicators - defining success criteria, requirements, tests
+    if echo "$lower_content" | grep -qE "(success criteria|requirements|define|specification|test plan|what success looks like|criteria|should|must|verify that|check that|ensure that|validate that)"; then
+        echo "BUILD"
+        return
+    fi
+    
+    # VERIFY phase indicators - testing, checking, validating results
+    if echo "$lower_content" | grep -qE "(test|verify|check|validate|confirm|result|output|works|passes|fails|error|success|✅|❌|passed|failed)"; then
+        echo "VERIFY"
+        return
+    fi
+    
+    # Tool-specific phase detection
+    case "$tool" in
+        "execute_bash"|"fs_read")
+            if echo "$lower_content" | grep -qE "(test|check|verify|validate|status)"; then
+                echo "VERIFY"
+            fi
+            ;;
+        "fs_write")
+            if echo "$lower_content" | grep -qE "(test|spec|criteria|requirement)"; then
+                echo "BUILD"
+            fi
+            ;;
+    esac
+}
+
+# Detect and emit phase if applicable
+if declare -f dashboard_emit_phase >/dev/null 2>&1; then
+    # Get tool parameters/content for phase detection
+    TOOL_CONTENT=""
+    if command -v jq >/dev/null 2>&1; then
+        # Extract content from various tool parameter locations
+        TOOL_CONTENT=$(echo "$input_json" | jq -r '.tool_input.command // .tool_input.file_text // .tool_input.summary // .tool_input.new_str // empty' 2>/dev/null) || true
+        
+        # For fs_write operations, also check the path for context
+        if [ "$TOOL_NAME" = "fs_write" ] && [ -z "$TOOL_CONTENT" ]; then
+            TOOL_PATH=$(echo "$input_json" | jq -r '.tool_input.path // empty' 2>/dev/null) || true
+            TOOL_CONTENT="$TOOL_PATH"
+        fi
+    fi
+    
+    # Debug: Log what we're analyzing
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) phase-detection: tool=$TOOL_NAME content_length=${#TOOL_CONTENT}" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
+    
+    if [ -n "$TOOL_CONTENT" ]; then
+        DETECTED_PHASE=$(detect_phase_from_tool "$TOOL_NAME" "$TOOL_CONTENT")
+        if [ -n "$DETECTED_PHASE" ]; then
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) phase-detected: $DETECTED_PHASE for tool $TOOL_NAME" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
+            dashboard_emit_phase "$DETECTED_PHASE" 2>/dev/null || true
+        else
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) no-phase-detected for tool $TOOL_NAME" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
+        fi
+    fi
+else
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) dashboard_emit_phase function not available" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true
 fi
 
 # Silent hook - no output

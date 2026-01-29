@@ -1,0 +1,591 @@
+// PILOT Dashboard - State Management
+// Watches files for session state changes and manages dashboard state
+
+import { readdir, readFile, mkdir, stat } from "fs/promises"
+import { join, dirname } from "path"
+import { homedir } from "os"
+import type {
+  SessionState,
+  DashboardState,
+  DashboardEvent,
+  Learning,
+  IdentityComponent,
+  IdentityFileStats,
+  SessionMetrics,
+  GlobalMetrics,
+} from "./types"
+import { SESSION_COLORS, IDENTITY_COMPONENTS } from "./types"
+import { detectCategory, calculateLearningRate, groupLearningsByCategory, validateTimestamp } from "./utils"
+
+const DASHBOARD_DIR = join(homedir(), ".kiro", "pilot", "dashboard")
+const SESSIONS_DIR = join(homedir(), ".kiro", "pilot", "metrics") // Read from metrics instead
+const EVENTS_FILE = join(DASHBOARD_DIR, "events.jsonl")
+const IDENTITY_DIR = join(homedir(), ".kiro", "pilot", "identity")
+const METRICS_DIR = join(homedir(), ".kiro", "pilot", "metrics")
+
+const POLL_INTERVAL = 500 // ms
+const IDENTITY_POLL_INTERVAL = 5000 // 5 seconds for identity stats
+
+export class StateManager {
+  private state: DashboardState = {
+    sessions: {},
+    recentLearnings: [],
+    sessionHistory: [],
+    learningStats: { totalCount: 0, categoryCounts: {}, recentRate: 0 },
+    identityAccess: {} as Record<IdentityComponent, number>,
+    identityStats: {} as Record<IdentityComponent, IdentityFileStats>,
+    globalMetrics: {
+      totalPrompts: 0,
+      prompts24h: 0,
+      totalTools: 0,
+      totalSuccess: 0,
+      totalFailures: 0,
+      estimatedCost: 0,
+      sessionCount: 0,
+      successRate: 100,
+    },
+    uptime: 0,
+    lastUpdate: Date.now(),
+    connected: false, // Will be true when streaming is implemented
+  }
+
+  private colorIndex = 0
+  private listeners: Set<(state: DashboardState) => void> = new Set()
+  private eventListeners: Set<(event: DashboardEvent) => void> = new Set()
+  private lastEventLine = 0
+  private sessionMtimes: Map<string, number> = new Map()
+  private allLearnings: Learning[] = []
+  private dashboardStartTime = Date.now()
+  private uptimeTimer?: Timer
+
+  async init() {
+    await mkdir(SESSIONS_DIR, { recursive: true })
+    await this.loadSessions()
+    await this.loadEvents()
+    await this.loadIdentityStats()
+    await this.loadGlobalMetrics()
+
+    // Start polling
+    setInterval(() => this.poll(), POLL_INTERVAL)
+
+    // Start identity stats polling (less frequent)
+    setInterval(() => this.loadIdentityStats(), IDENTITY_POLL_INTERVAL)
+
+    // Refresh global metrics periodically
+    setInterval(() => this.loadGlobalMetrics(), IDENTITY_POLL_INTERVAL)
+
+    // Start uptime tracking
+    this.startUptimeTimer()
+  }
+
+  getState(): DashboardState {
+    return this.state
+  }
+
+  onChange(fn: (state: DashboardState) => void) {
+    this.listeners.add(fn)
+    // Immediately call with current state
+    fn(this.state)
+  }
+
+  onEvent(fn: (event: DashboardEvent) => void) {
+    this.eventListeners.add(fn)
+  }
+
+  private notify() {
+    // Create new object reference to trigger React re-render
+    this.state = {
+      ...this.state,
+      sessions: { ...this.state.sessions },
+      lastUpdate: Date.now(),
+    }
+    this.listeners.forEach(fn => fn(this.state))
+  }
+
+  private notifyEvent(event: DashboardEvent) {
+    this.eventListeners.forEach(fn => fn(event))
+  }
+
+  private startUptimeTimer() {
+    this.uptimeTimer = setInterval(() => {
+      this.state.uptime = Math.floor((Date.now() - this.dashboardStartTime) / 1000)
+      // Only notify if there are sessions (avoid excessive re-renders)
+      if (Object.keys(this.state.sessions).length > 0) {
+        this.notify()
+      }
+    }, 1000)
+  }
+
+  private async poll() {
+    await this.pollSessions()
+    await this.pollEvents()
+  }
+
+  private async pollSessions() {
+    try {
+      const files = await readdir(SESSIONS_DIR)
+      const currentIds = new Set<string>()
+
+      for (const file of files.filter(f => f.endsWith(".json"))) {
+        const path = join(SESSIONS_DIR, file)
+        const stats = await stat(path).catch(() => null)
+        if (!stats) continue
+
+        // Only remove sessions that are truly stale (not modified in last 30 minutes)
+        const lastModified = stats.mtimeMs
+        const staleThreshold = Date.now() - 1800000 // 30 minutes ago
+
+        if (lastModified < staleThreshold) {
+          // Move to history before removing file
+          const id = file.replace("session-", "").replace(".json", "")
+          if (this.state.sessions[id]) {
+          if (this.state.sessions[id]) {
+            this.state.sessionHistory = [
+              this.state.sessions[id],
+              ...this.state.sessionHistory
+            ].slice(0, 10)
+            delete this.state.sessions[id]
+          }
+          // Remove stale file
+          try {
+            const fs = await import("fs")
+            fs.unlinkSync(path)
+          } catch {
+      // Ignore errors
+            // Ignore file deletion errors
+          }
+          continue
+        }
+
+        const mtime = stats.mtimeMs
+        const lastMtime = this.sessionMtimes.get(file) || 0
+
+        if (mtime > lastMtime) {
+          this.sessionMtimes.set(file, mtime)
+          await this.loadSession(path)
+        }
+
+        // Track which sessions still exist
+        const sessionId = file.replace("session-", "").replace(".json", "")
+        currentIds.add(sessionId)
+      }
+
+      // Remove sessions whose files were deleted
+      let changed = false
+      for (const id of Object.keys(this.state.sessions)) {
+        if (!currentIds.has(id)) {
+          // Move to history before removing
+          const session = this.state.sessions[id]
+          if (session) {
+            this.state.sessionHistory = [
+              session,
+              ...this.state.sessionHistory
+            ].slice(0, 10)
+          }
+          delete this.state.sessions[id]
+          changed = true
+        }
+      }
+      if (changed) this.notify()
+    } catch {
+      // Ignore errors
+      /* dir may not exist yet */
+    }
+  }
+
+  private async loadSessions() {
+    try {
+      const files = await readdir(SESSIONS_DIR)
+      for (const file of files.filter(f => f.startsWith("session-pilot-") && f.endsWith(".json"))) {
+        const path = join(SESSIONS_DIR, file)
+        const stats = await stat(path).catch(() => null)
+        if (stats) {
+          this.sessionMtimes.set(file, stats.mtimeMs)
+          await this.loadSession(path)
+        }
+      }
+    } catch {
+      // Ignore errors
+      /* dir may not exist yet */
+    }
+  }
+
+  private async loadSession(path: string) {
+    try {
+      const content = await readFile(path, "utf-8")
+      const data = JSON.parse(content)
+      const id = data.session_id || data.id // Handle both formats
+
+      // Convert metrics format to session format
+      const sessionData = {
+        id,
+        phase: data.status === "completed" ? "COMPLETED" : "ACTIVE",
+        updated: data.ended_at ? Math.floor(new Date(data.ended_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        startTime: Math.floor(Date.now() / 1000), // Will be updated if we find better data
+        commandCount: data.metrics?.prompts || 1,
+        workingDirectory: "Unknown", // Not available in metrics
+        metrics: data.metrics,
+      }
+
+      // Get file modification time as fallback start time
+      const stats = await stat(path).catch(() => null)
+      const fileStartTime = stats
+        ? Math.floor(stats.birthtimeMs / 1000)
+        : Math.floor(Date.now() / 1000)
+
+      // Preserve existing session data or set defaults
+      const existingSession = this.state.sessions[id]
+
+      if (!existingSession) {
+        // New session
+        sessionData.color = SESSION_COLORS[this.colorIndex++ % SESSION_COLORS.length]
+        sessionData.startTime = validateTimestamp(sessionData.startTime || fileStartTime)
+      } else {
+        // Existing session - preserve critical data
+        sessionData.color = existingSession.color
+        sessionData.startTime = validateTimestamp(existingSession.startTime || fileStartTime)
+        sessionData.commandCount = sessionData.commandCount || existingSession.commandCount || 1
+      }
+
+      this.state.sessions[id] = sessionData
+      this.notify()
+    } catch {
+      // Ignore errors
+      /* ignore parse errors */
+    }
+  }
+
+  private async pollEvents() {
+    try {
+      const content = await readFile(EVENTS_FILE, "utf-8").catch(() => "")
+      if (!content) return
+
+      const lines = content.trim().split("\n")
+
+      // Only process new lines
+      if (lines.length > this.lastEventLine) {
+        const newLines = lines.slice(this.lastEventLine)
+        this.lastEventLine = lines.length
+
+        for (const line of newLines) {
+          try {
+            const event = JSON.parse(line) as DashboardEvent
+            await this.handleEvent(event)
+          } catch {
+      // Ignore errors
+            /* skip bad lines */
+          }
+        }
+      }
+    } catch {
+      // Ignore errors
+      /* file may not exist */
+    }
+  }
+
+  private async loadEvents() {
+    try {
+      const content = await readFile(EVENTS_FILE, "utf-8").catch(() => "")
+      if (!content) return
+
+      const lines = content.trim().split("\n")
+      this.lastEventLine = lines.length
+
+      // Load all learnings for stats
+      this.allLearnings = []
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line) as DashboardEvent
+          if (event.type === "learning") {
+            const learning: Learning = {
+              timestamp: validateTimestamp(event.timestamp),
+              sessionId: event.sessionId,
+              title: event.title,
+              category: event.category || detectCategory(event.title, event.tags),
+              tags: event.tags,
+            }
+            this.allLearnings.push(learning)
+          }
+        } catch {
+      // Ignore errors
+          /* skip */
+        }
+      }
+
+      // Update recent learnings and stats
+      this.state.recentLearnings = this.allLearnings.slice(-10).reverse()
+      this.updateLearningStats()
+    } catch {
+      // Ignore errors
+      /* file may not exist */
+    }
+  }
+
+  private async handleEvent(event: DashboardEvent) {
+    // Ensure session exists for any event
+    await this.ensureSessionExists(event.sessionId)
+
+    if (event.type === "learning") {
+      const learning: Learning = {
+        timestamp: validateTimestamp(event.timestamp),
+        sessionId: event.sessionId,
+        title: event.title,
+        category: event.category || detectCategory(event.title, event.tags),
+        tags: event.tags,
+      }
+      this.allLearnings.push(learning)
+      this.state.recentLearnings = [learning, ...this.state.recentLearnings].slice(0, 10)
+      this.updateLearningStats()
+      this.notify()
+    } else if (event.type === "identity") {
+      // Track identity access
+      this.state.identityAccess[event.component] =
+        (this.state.identityAccess[event.component] || 0) + 1
+    }
+
+    this.notifyEvent(event)
+  }
+
+  private async ensureSessionExists(sessionId: string) {
+    const now = Math.floor(Date.now() / 1000)
+    
+    if (!this.state.sessions[sessionId]) {
+      // Create a minimal session from the session ID
+      this.state.sessions[sessionId] = {
+        id: sessionId,
+        color: SESSION_COLORS[this.colorIndex++ % SESSION_COLORS.length],
+        updated: now,
+        startTime: now,
+        commandCount: 1,
+      }
+      
+      // Load metrics for this session
+      const metrics = await this.loadSessionMetrics(sessionId)
+      if (metrics) {
+        this.state.sessions[sessionId].metrics = metrics
+      }
+      
+      this.notify()
+    } else {
+      // Update existing session timestamp
+      const session = this.state.sessions[sessionId]
+      if (session) {
+        session.updated = now
+      }
+    }
+  }
+
+  private updateLearningStats() {
+    this.state.learningStats = {
+      totalCount: this.allLearnings.length,
+      categoryCounts: groupLearningsByCategory(this.allLearnings),
+      recentRate: calculateLearningRate(this.allLearnings),
+    }
+  }
+
+  private async loadIdentityStats() {
+    const stats: Record<IdentityComponent, IdentityFileStats> = {} as Record<IdentityComponent, IdentityFileStats>
+    let changed = false
+
+    for (const component of IDENTITY_COMPONENTS) {
+      const filePath = join(IDENTITY_DIR, `${component}.md`)
+      try {
+        const fileStat = await stat(filePath)
+        const content = await readFile(filePath, "utf-8")
+        const lines = content.split("\n").length
+
+        const newStats: IdentityFileStats = {
+          component,
+          exists: true,
+          lines,
+          bytes: fileStat.size,
+          lastModified: fileStat.mtimeMs,
+          accessCount: this.state.identityAccess[component] || 0,
+        }
+
+        // Check if stats changed
+        const oldStats = this.state.identityStats[component]
+        if (!oldStats || oldStats.lines !== lines || oldStats.bytes !== newStats.bytes ||
+            oldStats.lastModified !== newStats.lastModified) {
+          changed = true
+        }
+
+        stats[component] = newStats
+      } catch {
+      // Ignore errors
+        stats[component] = {
+          component,
+          exists: false,
+          lines: 0,
+          bytes: 0,
+          lastModified: 0,
+          accessCount: this.state.identityAccess[component] || 0,
+        }
+      }
+    }
+
+    this.state.identityStats = stats
+    // Always notify after loading identity stats to update UI
+    this.notify()
+  }
+
+  private async loadSessionMetrics(sessionId: string): Promise<SessionMetrics | undefined> {
+    // Try various session ID formats for the metrics file
+    const possiblePaths = [
+      join(METRICS_DIR, `session-${sessionId}.json`),
+      join(METRICS_DIR, `${sessionId}.json`),
+    ]
+
+    for (const metricsPath of possiblePaths) {
+      try {
+        const content = await readFile(metricsPath, "utf-8")
+        const data = JSON.parse(content)
+        return {
+          sessionId: data.session_id || sessionId,
+          prompts: data.metrics?.prompts || 0,
+          tools: data.metrics?.tools || 0,
+          success: data.metrics?.success || 0,
+          failures: data.metrics?.failures || 0,
+          endedAt: data.ended_at,
+          status: data.status,
+        }
+      } catch {
+      // Ignore errors
+        // Try next path
+      }
+    }
+
+    // Also check for live metrics events file for running sessions
+    try {
+      const eventsFile = join(METRICS_DIR, "events.jsonl")
+      const content = await readFile(eventsFile, "utf-8")
+      const lines = content.trim().split("\n")
+
+      // Count metrics for this session from events
+      let prompts = 0
+      let tools = 0
+      let success = 0
+      let failures = 0
+      let hooks = 0
+
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line)
+          if (event.session_id === sessionId || event.sessionId === sessionId) {
+            if (event.type === "prompt" || event.type === "api_call") prompts++
+            if (event.type === "tool" || event.type === "tool_use") {
+              tools++
+              if (event.success !== false) success++
+              else failures++
+            }
+            if (event.type === "hook" || event.hook_event_name) hooks++
+          }
+        } catch {
+      // Ignore errors
+          // Skip invalid lines
+        }
+      }
+
+      // Also check raw-input.log for hook events
+      try {
+        const hookLogFile = join(dirname(METRICS_DIR), "pilot", "debug", "raw-input.log")
+        const hookContent = await readFile(hookLogFile, "utf-8")
+        const hookLines = hookContent.trim().split("\n")
+        
+        for (const line of hookLines) {
+          if (line.includes(sessionId) && (line.includes("post-tool-use:") || line.includes("user-prompt-submit:") || line.includes("agent-spawn:"))) {
+            hooks++
+          }
+        }
+      } catch {
+      // Ignore errors
+        // Hook log not available
+      }
+
+      if (prompts > 0 || tools > 0 || hooks > 0) {
+        return {
+          sessionId,
+          prompts,
+          tools,
+          success,
+          failures,
+          hooks,
+        }
+      }
+    } catch {
+      // Ignore errors
+      // Events file not found
+    }
+
+    return undefined
+  }
+
+  private async loadGlobalMetrics() {
+    const metrics: GlobalMetrics = {
+      totalPrompts: 0,
+      prompts24h: 0,
+      totalTools: 0,
+      totalSuccess: 0,
+      totalFailures: 0,
+      estimatedCost: 0,
+      sessionCount: 0,
+      successRate: 100,
+    }
+
+    try {
+      const files = await readdir(METRICS_DIR)
+      const sessionFiles = files.filter(f => f.startsWith("session-") && f.endsWith(".json"))
+      const now = Date.now()
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000)
+
+      for (const file of sessionFiles) {
+        try {
+          const content = await readFile(join(METRICS_DIR, file), "utf-8")
+          const data = JSON.parse(content)
+
+          if (data.metrics) {
+            metrics.totalPrompts += data.metrics.prompts || 0
+            metrics.totalTools += data.metrics.tools || 0
+            metrics.totalSuccess += data.metrics.success || 0
+            metrics.totalFailures += data.metrics.failures || 0
+            metrics.sessionCount++
+
+            // Check if session was in last 24h
+            if (data.ended_at) {
+              const endTime = new Date(data.ended_at).getTime()
+              if (endTime > twentyFourHoursAgo) {
+                metrics.prompts24h += data.metrics.prompts || 0
+              }
+            }
+          }
+        } catch {
+      // Ignore errors
+          // Skip invalid files
+        }
+      }
+
+      // Calculate estimated cost (rough estimate)
+      // ~2000 tokens per prompt, $0.003/1k input + $0.015/1k output (assuming 30/70 split)
+      const totalTokens = metrics.totalPrompts * 2000
+      const inputTokens = totalTokens * 0.3
+      const outputTokens = totalTokens * 0.7
+      metrics.estimatedCost = (inputTokens * 0.003 / 1000) + (outputTokens * 0.015 / 1000)
+
+      // Calculate success rate
+      const totalOps = metrics.totalSuccess + metrics.totalFailures
+      metrics.successRate = totalOps > 0 ? Math.round((metrics.totalSuccess / totalOps) * 100) : 100
+
+      this.state.globalMetrics = metrics
+      this.notify()
+    } catch {
+      // Ignore errors
+      // Metrics dir may not exist
+    }
+  }
+
+  cleanup() {
+    if (this.uptimeTimer) {
+      clearInterval(this.uptimeTimer)
+    }
+  }
+}

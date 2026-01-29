@@ -12,8 +12,8 @@ CACHE_DIR="${PILOT_HOME}/.cache"
 METRICS_DIR="${PILOT_HOME}/metrics"
 OBSERVATIONS_DIR="${PILOT_DIR}/observations"
 
-# Source dashboard emitter early
-[[ -f "${PILOT_HOME}/lib/dashboard-emit.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emit.sh" 2>/dev/null || true
+# Source dashboard emitter (use consolidated emitter library)
+[[ -f "${PILOT_HOME}/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/lib/dashboard-emitter.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -178,10 +178,5 @@ cat << EOF
 - Learnings are automatically captured when you solve problems
 </pilot-context>
 EOF
-
-# Dashboard integration - emit OBSERVE phase on session start
-if command -v emit_phase >/dev/null 2>&1; then
-    emit_phase "OBSERVE" 2>/dev/null || true
-fi
 
 exit 0
