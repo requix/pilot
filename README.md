@@ -34,11 +34,9 @@ Every task follows seven phases:
 ```
 
 The installer will:
-- Create `~/.kiro/pilot/` directory structure (system files)
-- Create `~/.pilot/` directory (user data: learnings, identity)
-- Install the pilot agent to `~/.kiro/agents/`
-- Set up hook scripts for automation
-- Copy identity templates and resources
+- Install agent config to `~/.kiro/agents/pilot.json` (only file in .kiro)
+- Create `~/.pilot/` directory with everything else
+- Set up hooks, steering, system files, and identity templates
 
 ### Verify Installation
 
@@ -48,12 +46,16 @@ The installer will:
 
 ### Dashboard (Optional)
 
-PILOT includes a modern TUI dashboard for real-time monitoring:
+PILOT has a companion TUI dashboard for real-time monitoring, available as a separate project:
+
+**[pilot-dashboard](https://github.com/pilot-framework/pilot-dashboard)** — Terminal dashboard for PILOT sessions
 
 ```bash
-cd src/dashboard-ink
+# Clone and install
+git clone https://github.com/pilot-framework/pilot-dashboard.git
+cd pilot-dashboard
 bun install
-bun run dev
+bun run start
 ```
 
 Features:
@@ -70,32 +72,32 @@ Features:
 
 ## Directory Structure
 
-PILOT uses two locations:
+PILOT uses a simple structure:
 
 ```
-~/.pilot/                   # User data (learnings, identity)
-├── learnings/              # Captured solutions and insights
-└── identity/               # Your personal context
+~/.kiro/agents/pilot.json   # Agent config (only file in .kiro)
 
-~/.kiro/                    # Kiro system files
-├── pilot/                  # PILOT system
-│   ├── memory/             # Hot/Warm/Cold storage
-│   │   ├── hot/            # Current session
-│   │   ├── warm/           # Recent context
-│   │   └── cold/           # Archive
-│   ├── resources/          # Algorithm & Principles
-│   └── metrics/            # Session metrics
-├── agents/pilot.json       # Agent configuration
-├── hooks/pilot/            # Hook scripts
-└── steering/pilot/         # Steering files
-
-src/dashboard-ink/          # Optional TUI dashboard
-├── src/                    # Dashboard source code
-├── bin/                    # Built executables
-└── docs/                   # Dashboard documentation
+~/.pilot/                   # Everything else
+├── hooks/                  # Hook scripts
+├── steering/               # Methodology files
+├── system/                 # System files
+│   ├── lib/                # Shared libraries
+│   ├── detectors/          # Identity detectors
+│   ├── scripts/            # Utility scripts
+│   └── resources/          # Algorithm & Principles
+├── identity/               # Your personal context
+├── learnings/              # Captured solutions
+├── observations/           # Adaptive identity capture
+├── memory/                 # Hot/Warm/Cold storage
+│   ├── hot/                # Current session
+│   ├── warm/               # Recent context
+│   └── cold/               # Archive
+├── sessions/               # Session archives
+├── patterns/               # Pattern detection
+└── logs/                   # System logs
 ```
 
-**Important:** Learnings are saved to `~/.pilot/learnings/`, not `~/.kiro/pilot/`.
+**Simple:** One file in `~/.kiro/`, everything else in `~/.pilot/`.
 
 ## Working Modes
 
@@ -165,17 +167,25 @@ All implemented as bash hooks — no external dependencies.
 | **Security** | Multi-tier command validation |
 | **Monitoring** | Session metrics and tracking |
 
-## Pack System
+## Source Structure
 
-PILOT uses a modular pack system. See:
-- `packs/pilot-core/` — Core pack (installed by default)
-- `packs/pilot-pack-template/` — Template for creating new packs
-- `PACK-DEVELOPMENT.md` — Pack development guide
+```
+src/
+├── agents/             # Agent configuration
+│   └── pilot.json
+├── hooks/              # Hook scripts
+├── lib/                # Shared libraries
+├── detectors/          # Identity detectors
+├── identity/           # Identity templates
+├── resources/          # Algorithm & Principles
+├── steering/           # Steering files
+└── scripts/            # Utility scripts
+```
 
 ## Design Principles
 
 1. **Bash-only** — No TypeScript, no external runtimes
-2. **Single directory** — System in `~/.kiro/`, user data in `~/.pilot/`
+2. **Single directory** — Everything in `~/.pilot/` (except agent config)
 3. **Hook-based** — All features via Kiro's native hooks
 4. **Fail-safe** — Hooks always exit 0, never break Kiro
 5. **Verified learning** — Only capture learnings after verification
