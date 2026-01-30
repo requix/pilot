@@ -26,83 +26,53 @@ PILOT transforms your AI assistant into a personalized engineering system with:
 
 ### Installation Location
 
-All PILOT files are installed to `~/.kiro/` — Kiro's home directory:
+PILOT files are installed to two locations:
 
 ```
-~/.kiro/
-├── pilot/              # PILOT home
-│   ├── identity/       # Your personal context (10 files)
-│   ├── resources/      # Algorithm & principles
-│   ├── memory/         # Three-tier memory
-│   └── metrics/        # Session metrics
-├── agents/pilot.json   # Agent configuration
-├── hooks/pilot/        # Hook scripts (5 files)
-└── steering/pilot/     # Steering files
+~/.kiro/                    # Kiro integration
+├── pilot/                  # PILOT system
+│   ├── identity/           # Identity templates
+│   ├── resources/          # Algorithm & principles
+│   ├── memory/             # Three-tier memory
+│   ├── lib/                # Shared libraries
+│   ├── detectors/          # Identity detectors
+│   └── metrics/            # Session metrics
+├── agents/pilot.json       # Agent configuration
+├── hooks/pilot/            # Hook scripts
+└── steering/pilot/         # Steering files
+
+~/.pilot/                   # User data
+├── learnings/              # Auto-captured learnings
+├── identity/               # Your personal context
+├── observations/           # Adaptive identity capture
+└── sessions/               # Session archives
 ```
 
 ---
 
 ## Installation Steps
 
-### Step 1: Navigate to pilot-core pack
+### Step 1: Run the installer
 
 ```bash
-cd src/packs/pilot-core
+cd src
+./install.sh
 ```
 
-### Step 2: Follow INSTALL.md
-
-The pilot-core pack contains detailed installation instructions in `INSTALL.md`.
-
-**Quick installation:**
+### Step 2: Verify Installation
 
 ```bash
-# Create directories
-mkdir -p "$HOME/.kiro/pilot/identity"
-mkdir -p "$HOME/.kiro/pilot/resources"
-mkdir -p "$HOME/.kiro/pilot/memory/hot"
-mkdir -p "$HOME/.kiro/pilot/memory/warm"
-mkdir -p "$HOME/.kiro/pilot/memory/cold"
-mkdir -p "$HOME/.kiro/pilot/metrics"
-mkdir -p "$HOME/.kiro/pilot/packs"
-mkdir -p "$HOME/.kiro/pilot/.cache"
-mkdir -p "$HOME/.kiro/agents"
-mkdir -p "$HOME/.kiro/hooks/pilot"
-mkdir -p "$HOME/.kiro/steering/pilot"
-
-# Copy agent config
-cp agents/pilot.json "$HOME/.kiro/agents/"
-
-# Copy hooks
-cp system/hooks/*.sh "$HOME/.kiro/hooks/pilot/"
-chmod +x "$HOME/.kiro/hooks/pilot/"*.sh
-
-# Copy resources
-cp resources/*.md "$HOME/.kiro/pilot/resources/"
-
-# Copy identity templates
-cp identity/*.md "$HOME/.kiro/pilot/identity/"
-
-# Copy steering files
-cp steering/*.md "$HOME/.kiro/steering/pilot/"
-
-# Create config
-cat > "$HOME/.kiro/pilot/config.json" << 'EOF'
-{
-  "version": "1.0.0",
-  "installed_at": "$(date -Iseconds)"
-}
-EOF
+./verify.sh
 ```
 
-### Step 3: Verify Installation
+Or manually:
 
 ```bash
-# Quick verification
 [ -f "$HOME/.kiro/agents/pilot.json" ] && echo "✓ Agent" || echo "❌ Agent"
 [ -d "$HOME/.kiro/hooks/pilot" ] && echo "✓ Hooks" || echo "❌ Hooks"
 [ -d "$HOME/.kiro/pilot/identity" ] && echo "✓ Identity" || echo "❌ Identity"
 [ -d "$HOME/.kiro/pilot/memory" ] && echo "✓ Memory" || echo "❌ Memory"
+[ -d "$HOME/.pilot/learnings" ] && echo "✓ Learnings" || echo "❌ Learnings"
 ```
 
 ---
@@ -110,7 +80,7 @@ EOF
 ## After Installation
 
 1. **Select the pilot agent** in Kiro
-2. **Customize your identity** — Edit files in `~/.kiro/pilot/identity/`
+2. **Customize your identity** — Edit files in `~/.pilot/identity/`
 3. **Start using PILOT** — The Universal Algorithm guides every task
 
 ### Identity Files to Customize
@@ -156,15 +126,37 @@ ls -la "$HOME/.kiro/pilot/memory/"
 
 ## Manual Installation
 
-If you prefer to install without AI assistance:
+If you prefer to install without the script:
 
 ```bash
-# Clone the repository
-git clone https://github.com/pilot-project/pilot.git
-cd pilot/src/packs/pilot-core
+# From the src directory
+mkdir -p "$HOME/.kiro/pilot/identity"
+mkdir -p "$HOME/.kiro/pilot/resources"
+mkdir -p "$HOME/.kiro/pilot/memory/hot"
+mkdir -p "$HOME/.kiro/pilot/memory/warm"
+mkdir -p "$HOME/.kiro/pilot/memory/cold"
+mkdir -p "$HOME/.kiro/pilot/lib"
+mkdir -p "$HOME/.kiro/pilot/detectors"
+mkdir -p "$HOME/.kiro/agents"
+mkdir -p "$HOME/.kiro/hooks/pilot"
+mkdir -p "$HOME/.kiro/steering/pilot"
+mkdir -p "$HOME/.pilot/learnings"
+mkdir -p "$HOME/.pilot/identity"
+mkdir -p "$HOME/.pilot/observations"
 
-# Follow INSTALL.md instructions
-# Or run the quick installation commands above
+# Copy files
+cp agents/pilot.json "$HOME/.kiro/agents/"
+cp hooks/*.sh "$HOME/.kiro/hooks/pilot/"
+cp lib/*.sh "$HOME/.kiro/pilot/lib/"
+cp detectors/*.sh "$HOME/.kiro/pilot/detectors/"
+cp resources/*.md "$HOME/.kiro/pilot/resources/"
+cp identity/*.md "$HOME/.kiro/pilot/identity/"
+cp steering/*.md "$HOME/.kiro/steering/pilot/"
+
+# Make scripts executable
+chmod +x "$HOME/.kiro/hooks/pilot/"*.sh
+chmod +x "$HOME/.kiro/pilot/lib/"*.sh
+chmod +x "$HOME/.kiro/pilot/detectors/"*.sh
 ```
 
 ---
@@ -176,9 +168,8 @@ PILOT follows PAI's philosophy but with key differences:
 | Aspect | PAI | PILOT |
 |--------|-----|-------|
 | Language | TypeScript hooks | Bash-only hooks |
-| Location | `~/.claude/` or `$PAI_DIR` | `~/.kiro/` |
+| Location | `~/.claude/` or `$PAI_DIR` | `~/.kiro/` + `~/.pilot/` |
 | Platform | Claude Code | Kiro |
-| Complexity | Multiple packs | Single core pack |
 
 Both share:
 - AI-first installation
