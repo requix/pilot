@@ -25,6 +25,7 @@ Every task follows seven phases:
 
 - [Kiro](https://kiro.dev) installed
 - macOS or Linux (bash required)
+- (Optional) Enable semantic search: `kiro-cli settings chat.enableKnowledge true`
 
 ## Quick Start
 
