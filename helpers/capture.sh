@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# capture-controller.sh - Capture Controller for Adaptive Identity Capture
-# Part of PILOT - Manages when and how capture prompts are presented
+# capture.sh - Capture management for PILOT
+# Part of PILOT - Personal Intelligence Layer for Optimized Tasks
+# Location: src/helpers/capture.sh (consolidated from capture-controller.sh + silent-capture.sh)
 #
-# Features:
-# - Session prompt limit (max 1)
-# - Weekly prompt limit (max 3)
-# - Dismissal tracking and frequency reduction
-# - Timing detection (task completion, session gaps, debugging context)
-# - Priority queue for prompts
+# Combines prompt frequency control with silent identity auto-capture.
 #
 # Usage:
-#   source capture-controller.sh
+#   source capture.sh
 #   capture_can_show_prompt
-#   capture_record_prompt_shown "project"
-#   capture_record_response true
-#   capture_is_good_timing
-#   capture_get_next_prompt
+#   capture_from_prompt "$prompt"
+#   capture_from_response "$response"
 
 # Dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "${SCRIPT_DIR}/json-helpers.sh" ]] && source "${SCRIPT_DIR}/json-helpers.sh"
+[[ -f "${SCRIPT_DIR}/json.sh" ]] && source "${SCRIPT_DIR}/json.sh"
+[[ -f "${SCRIPT_DIR}/identity.sh" ]] && source "${SCRIPT_DIR}/identity.sh"
+
+# ============================================
+# CAPTURE CONTROLLER (from capture-controller.sh)
+# ============================================
 
 # Directories and files
 PILOT_DATA="${PILOT_DATA:-$HOME/.pilot}"
@@ -32,14 +31,6 @@ CAPTURE_MAX_PER_SESSION=1
 CAPTURE_MAX_PER_WEEK=3
 CAPTURE_COOLDOWN_DAYS=14
 CAPTURE_DISMISS_THRESHOLD=3
-
-# Priority order (lower = higher priority)
-# 1=PROJECT, 2=CHALLENGE, 3=LEARNING, 4=STRATEGY, 5=GOAL,
-# 6=BELIEF, 7=IDEA, 8=MODEL, 9=PREFERENCE, 10=NARRATIVE, 11=MISSION
-
-# ============================================
-# INITIALIZATION
-# ============================================
 
 _capture_ensure_file() {
     mkdir -p "$OBSERVATIONS_DIR" 2>/dev/null || true
@@ -74,35 +65,27 @@ EOF
 # Get the start of the current week (Monday)
 _capture_get_week_start() {
     if [[ "$(uname)" == "Darwin" ]]; then
-        # macOS: Get Monday of current week
         local day_of_week
-        day_of_week=$(date +%u)  # 1=Monday, 7=Sunday
+        day_of_week=$(date +%u)
         local days_since_monday=$((day_of_week - 1))
         date -u -v-${days_since_monday}d +"%Y-%m-%dT00:00:00Z"
     else
-        # Linux
         date -u -d "last monday" +"%Y-%m-%dT00:00:00Z" 2>/dev/null || date -u +"%Y-%m-%dT00:00:00Z"
     fi
 }
-
-# ============================================
-# FREQUENCY LIMITING
-# ============================================
 
 # Check if a prompt can be shown now
 capture_can_show_prompt() {
     _capture_ensure_file
     
-    # Check session limit
     local session_prompts
     session_prompts=$(json_read_file "$PROMPTS_FILE" ".limits.sessionPrompts")
     session_prompts=${session_prompts:-0}
     
     if [[ $session_prompts -ge $CAPTURE_MAX_PER_SESSION ]]; then
-        return 1  # Session limit reached
+        return 1
     fi
     
-    # Check weekly limit (with frequency multiplier)
     local week_start week_prompts frequency_multiplier
     week_start=$(json_read_file "$PROMPTS_FILE" ".limits.weekStart")
     week_prompts=$(json_read_file "$PROMPTS_FILE" ".limits.weekPrompts")
@@ -111,28 +94,25 @@ capture_can_show_prompt() {
     week_prompts=${week_prompts:-0}
     frequency_multiplier=${frequency_multiplier:-1.0}
     
-    # Check if we're in a new week
     local current_week_start
     current_week_start=$(_capture_get_week_start)
     
     if [[ "$week_start" != "$current_week_start" ]]; then
-        # New week - reset counter
         json_update_field "$PROMPTS_FILE" ".limits.weekStart" "\"$current_week_start\""
         json_update_field "$PROMPTS_FILE" ".limits.weekPrompts" "0"
         week_prompts=0
     fi
     
-    # Calculate effective weekly limit (reduced if user dismisses often)
     local effective_limit
     effective_limit=$(echo "$CAPTURE_MAX_PER_WEEK * $frequency_multiplier" | bc 2>/dev/null || echo "$CAPTURE_MAX_PER_WEEK")
-    effective_limit=${effective_limit%.*}  # Truncate to integer
+    effective_limit=${effective_limit%.*}
     [[ $effective_limit -lt 1 ]] && effective_limit=1
     
     if [[ $week_prompts -ge $effective_limit ]]; then
-        return 1  # Weekly limit reached
+        return 1
     fi
     
-    return 0  # Can show prompt
+    return 0
 }
 
 # Record that a prompt was shown
@@ -145,11 +125,9 @@ capture_record_prompt_shown() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    # Add to history
     local history_record="{\"timestamp\": \"$timestamp\", \"type\": \"$prompt_type\", \"itemId\": \"$item_id\", \"accepted\": null}"
     json_array_append "$PROMPTS_FILE" ".history" "$history_record"
     
-    # Trim history to last 100 entries
     local history_count
     history_count=$(json_array_length "$PROMPTS_FILE" ".history")
     while [[ $history_count -gt 100 ]]; do
@@ -157,7 +135,6 @@ capture_record_prompt_shown() {
         history_count=$((history_count - 1))
     done
     
-    # Update counters
     local session_prompts week_prompts total_shown
     session_prompts=$(json_read_file "$PROMPTS_FILE" ".limits.sessionPrompts")
     week_prompts=$(json_read_file "$PROMPTS_FILE" ".limits.weekPrompts")
@@ -176,11 +153,10 @@ capture_record_prompt_shown() {
 
 # Record user response to prompt
 capture_record_response() {
-    local accepted="$1"  # true or false
+    local accepted="$1"
     
     _capture_ensure_file
     
-    # Update last history entry
     local history_count
     history_count=$(json_array_length "$PROMPTS_FILE" ".history")
     
@@ -189,7 +165,6 @@ capture_record_response() {
         json_update_field "$PROMPTS_FILE" ".history[$last_index].accepted" "$accepted"
     fi
     
-    # Update stats
     local total_accepted consecutive_dismissals frequency_multiplier total_shown
     total_accepted=$(json_read_file "$PROMPTS_FILE" ".stats.totalAccepted")
     consecutive_dismissals=$(json_read_file "$PROMPTS_FILE" ".stats.consecutiveDismissals")
@@ -204,22 +179,18 @@ capture_record_response() {
     if [[ "$accepted" == "true" ]]; then
         total_accepted=$((total_accepted + 1))
         consecutive_dismissals=0
-        # Slowly restore frequency if user accepts
         if [[ $(echo "$frequency_multiplier < 1.0" | bc 2>/dev/null || echo 0) -eq 1 ]]; then
             frequency_multiplier=$(echo "$frequency_multiplier + 0.1" | bc 2>/dev/null || echo "1.0")
             [[ $(echo "$frequency_multiplier > 1.0" | bc 2>/dev/null || echo 0) -eq 1 ]] && frequency_multiplier="1.0"
         fi
     else
         consecutive_dismissals=$((consecutive_dismissals + 1))
-        
-        # Reduce frequency after threshold dismissals
         if [[ $consecutive_dismissals -ge $CAPTURE_DISMISS_THRESHOLD ]]; then
             frequency_multiplier=$(echo "$frequency_multiplier * 0.5" | bc 2>/dev/null || echo "0.5")
             [[ $(echo "$frequency_multiplier < 0.25" | bc 2>/dev/null || echo 0) -eq 1 ]] && frequency_multiplier="0.25"
         fi
     fi
     
-    # Calculate acceptance rate
     local acceptance_rate=0
     if [[ $total_shown -gt 0 ]]; then
         acceptance_rate=$(echo "scale=2; $total_accepted / $total_shown" | bc 2>/dev/null || echo "0")
@@ -233,17 +204,12 @@ capture_record_response() {
     json_touch_file "$PROMPTS_FILE"
 }
 
-# Reset session prompt counter (call at session start)
+# Reset session prompt counter
 capture_reset_session() {
     _capture_ensure_file
-    
     json_update_field "$PROMPTS_FILE" ".limits.sessionPrompts" "0"
     json_touch_file "$PROMPTS_FILE"
 }
-
-# ============================================
-# TIMING DETECTION
-# ============================================
 
 # Check if current context is appropriate for prompts
 capture_is_good_timing() {
@@ -253,87 +219,54 @@ capture_is_good_timing() {
     local session_gap_hours="${4:-0}"
     local organization_requested="${5:-false}"
     
-    # Don't prompt during debugging
-    if [[ "$is_debugging" == "true" ]]; then
-        return 1
-    fi
-    
-    # Don't prompt if recent errors
-    if [[ $recent_errors -gt 2 ]]; then
-        return 1
-    fi
-    
-    # Good timing: task completed
-    if [[ "$task_completed" == "true" ]]; then
-        return 0
-    fi
-    
-    # Good timing: session gap of 4+ hours (fresh start)
-    if [[ $session_gap_hours -ge 4 ]]; then
-        return 0
-    fi
-    
-    # Good timing: user requested organization help
-    if [[ "$organization_requested" == "true" ]]; then
-        return 0
-    fi
-    
-    # Default: not a good time
+    if [[ "$is_debugging" == "true" ]]; then return 1; fi
+    if [[ $recent_errors -gt 2 ]]; then return 1; fi
+    if [[ "$task_completed" == "true" ]]; then return 0; fi
+    if [[ $session_gap_hours -ge 4 ]]; then return 0; fi
+    if [[ "$organization_requested" == "true" ]]; then return 0; fi
     return 1
 }
 
 # Detect if user is in debugging context
 capture_detect_debugging() {
     local user_input="$1"
-    
     local input_lower
     input_lower=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
     
     local debug_indicators=("error" "bug" "fix" "broken" "doesn't work" "not working" "failed" "crash" "exception" "stack trace")
     
     for indicator in "${debug_indicators[@]}"; do
-        if [[ "$input_lower" == *"$indicator"* ]]; then
-            return 0  # Is debugging
-        fi
+        if [[ "$input_lower" == *"$indicator"* ]]; then return 0; fi
     done
-    
-    return 1  # Not debugging
+    return 1
 }
 
 # Detect if user completed a task
 capture_detect_task_completion() {
     local user_input="$1"
-    
     local input_lower
     input_lower=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
     
     local completion_indicators=("done" "finished" "completed" "works" "working now" "fixed" "solved" "success" "ship it" "merge" "deploy")
     
     for indicator in "${completion_indicators[@]}"; do
-        if [[ "$input_lower" == *"$indicator"* ]]; then
-            return 0  # Task completed
-        fi
+        if [[ "$input_lower" == *"$indicator"* ]]; then return 0; fi
     done
-    
-    return 1  # Not completed
+    return 1
 }
 
 # Detect if user requested organization help
 capture_detect_organization_request() {
     local user_input="$1"
-    
     local input_lower
     input_lower=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
     
     local org_indicators=("organize" "plan" "prioritize" "review" "what should" "help me decide" "next steps" "roadmap")
     
     for indicator in "${org_indicators[@]}"; do
-        if [[ "$input_lower" == *"$indicator"* ]]; then
-            return 0  # Organization requested
-        fi
+        if [[ "$input_lower" == *"$indicator"* ]]; then return 0; fi
     done
-    
-    return 1  # Not requested
+    return 1
 }
 
 # Calculate session gap in hours
@@ -366,14 +299,9 @@ capture_get_session_gap() {
     echo "$gap_hours"
 }
 
-# ============================================
-# PRIORITY QUEUE
-# ============================================
-
 # Get priority for a prompt type
 _capture_get_priority() {
     local prompt_type="$1"
-    
     case "$prompt_type" in
         "project")    echo 1 ;;
         "challenge")  echo 2 ;;
@@ -390,33 +318,23 @@ _capture_get_priority() {
     esac
 }
 
-# Get the next prompt to show (if any)
-# Takes a list of pending prompts as JSON lines
+# Get the next prompt to show
 capture_get_next_prompt() {
     local pending_prompts="$1"
     
-    if [[ -z "$pending_prompts" ]]; then
-        return 1
-    fi
+    if [[ -z "$pending_prompts" ]]; then return 1; fi
+    if ! capture_can_show_prompt; then return 1; fi
     
-    # Check if we can show a prompt
-    if ! capture_can_show_prompt; then
-        return 1
-    fi
-    
-    # Sort by priority and return the highest priority prompt
     local best_prompt=""
     local best_priority=999
     
     while IFS= read -r prompt; do
         [[ -z "$prompt" ]] && continue
         
-        # Extract type from JSON
         local prompt_type
         prompt_type=$(echo "$prompt" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
         
         if [[ -z "$prompt_type" ]]; then
-            # Try alternative extraction for different JSON formats
             prompt_type=$(echo "$prompt" | grep -o '"promptType"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
         fi
         
@@ -433,34 +351,290 @@ capture_get_next_prompt() {
         echo "$best_prompt"
         return 0
     fi
-    
     return 1
 }
-
-# ============================================
-# STATISTICS
-# ============================================
 
 # Get capture statistics
 capture_get_stats() {
     _capture_ensure_file
-    
     json_read_file "$PROMPTS_FILE" ".stats"
 }
 
 # Get prompt history
 capture_get_history() {
     local limit="${1:-10}"
-    
     _capture_ensure_file
-    
     json_read_file "$PROMPTS_FILE" ".history | .[-$limit:]"
+}
+
+
+# ============================================
+# SILENT CAPTURE (from silent-capture.sh)
+# ============================================
+
+# Directories for silent capture
+PILOT_HOME="${PILOT_HOME:-$HOME/.pilot}"
+LOGS_DIR="${PILOT_HOME}/logs"
+
+# Ensure directories exist
+mkdir -p "$OBSERVATIONS_DIR" "$LOGS_DIR" 2>/dev/null || true
+
+# Keyword indicators - need 2+ matches to trigger capture
+LEARNING_INDICATORS="problem|solved|discovered|fixed|learned|realized|figured out|root cause|issue was|turned out|bug|solution|mistake|error|debugging"
+BELIEF_INDICATORS="i always|i never|i believe|i prefer|i think|should always|must always|principle|value|important to me"
+CHALLENGE_INDICATORS="struggling|stuck|frustrated|difficult|hard time|problem with|issue with|error|failing|broken|cant|cannot|can't figure"
+PROJECT_INDICATORS="working on|my project|the project|building|developing|shipping|launching|maintaining"
+IDEA_INDICATORS="would be cool|could try|might try|someday|idea|interesting to|explore|wonder if|what if"
+GOAL_INDICATORS="my goal|trying to|want to|need to|aiming to|deadline|ship by|finish by|complete by"
+STRATEGY_INDICATORS="my approach|i usually|i typically|my method|my process|when i|first i|before i"
+
+# Count how many indicators match in text
+count_indicators() {
+    local text="$1"
+    local indicators="$2"
+    local text_lower
+    text_lower=$(echo "$text" | tr '[:upper:]' '[:lower:]')
+    
+    local count
+    count=$(echo "$text_lower" | grep -oE "$indicators" 2>/dev/null | wc -l | tr -d ' ')
+    echo "${count:-0}"
+}
+
+# Capture from user prompts
+capture_from_prompt() {
+    local prompt="$1"
+    [[ -z "$prompt" ]] && return 0
+    
+    local prompt_lower
+    prompt_lower=$(echo "$prompt" | tr '[:upper:]' '[:lower:]')
+    
+    _check_and_capture_belief "$prompt" "$prompt_lower"
+    _check_and_capture_challenge "$prompt" "$prompt_lower"
+    _check_and_capture_project "$prompt" "$prompt_lower"
+    _check_and_capture_idea "$prompt" "$prompt_lower"
+    _check_and_capture_goal "$prompt" "$prompt_lower"
+    _check_and_capture_strategy "$prompt" "$prompt_lower"
+}
+
+# Capture from AI responses
+capture_from_response() {
+    local response="$1"
+    [[ -z "$response" ]] && return 0
+    _check_and_capture_learning "$response"
+}
+
+_check_and_capture_learning() {
+    local text="$1"
+    local count
+    count=$(count_indicators "$text" "$LEARNING_INDICATORS")
+    
+    if [[ $count -ge 2 ]]; then
+        local summary
+        summary=$(echo "$text" | tr '[:upper:]' '[:lower:]' | grep -oE "[^.]*($LEARNING_INDICATORS)[^.]*\." | head -1 | cut -c1-150)
+        
+        if [[ -n "$summary" ]]; then
+            _record_and_maybe_capture "learning" "$summary" "$count"
+        fi
+    fi
+}
+
+_check_and_capture_belief() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$BELIEF_INDICATORS")
+    
+    if [[ $count -ge 2 ]]; then
+        local belief
+        belief=$(echo "$text_lower" | grep -oE "(i always|i never|i believe|i prefer)[^.]*" | head -1 | cut -c1-100)
+        
+        if [[ -n "$belief" ]]; then
+            _record_and_maybe_capture "belief" "$belief" "$count"
+        fi
+    fi
+}
+
+_check_and_capture_challenge() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$CHALLENGE_INDICATORS")
+    
+    if [[ $count -ge 2 ]]; then
+        local challenge
+        challenge=$(echo "$text_lower" | grep -oE "(struggling|stuck|frustrated|problem|issue|error)[^.]*" | head -1 | cut -c1-100)
+        
+        if [[ -n "$challenge" ]]; then
+            _record_and_maybe_capture "challenge" "$challenge" "$count"
+        fi
+    fi
+}
+
+_check_and_capture_project() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$PROJECT_INDICATORS")
+    
+    if [[ $count -ge 1 ]]; then
+        local project
+        if [[ "$text_lower" =~ (working on|my project|the project)[[:space:]]+([a-z0-9_-]+) ]]; then
+            project="${BASH_REMATCH[2]}"
+            if [[ ! "$project" =~ ^(the|a|an|this|that|some|it|my|these|those|new|old|our|your)$ ]] && [[ ${#project} -gt 2 ]]; then
+                _record_and_maybe_capture "project" "$project" "$count"
+            fi
+        fi
+    fi
+}
+
+_check_and_capture_idea() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$IDEA_INDICATORS")
+    
+    if [[ $count -ge 1 ]]; then
+        local idea
+        idea=$(echo "$text_lower" | grep -oE "(would be cool|could try|might try|idea)[^.]*" | head -1 | cut -c1-100)
+        
+        if [[ -n "$idea" ]]; then
+            _record_and_maybe_capture "idea" "$idea" "$count"
+        fi
+    fi
+}
+
+_check_and_capture_goal() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$GOAL_INDICATORS")
+    
+    if [[ $count -ge 2 ]]; then
+        local goal
+        goal=$(echo "$text_lower" | grep -oE "(my goal|trying to|want to|need to)[^.]*" | head -1 | cut -c1-100)
+        
+        if [[ -n "$goal" ]]; then
+            _record_and_maybe_capture "goal" "$goal" "$count"
+        fi
+    fi
+}
+
+_check_and_capture_strategy() {
+    local text="$1"
+    local text_lower="$2"
+    local count
+    count=$(count_indicators "$text" "$STRATEGY_INDICATORS")
+    
+    if [[ $count -ge 2 ]]; then
+        local strategy
+        strategy=$(echo "$text_lower" | grep -oE "(my approach|i usually|i typically|my method)[^.]*" | head -1 | cut -c1-100)
+        
+        if [[ -n "$strategy" ]]; then
+            _record_and_maybe_capture "strategy" "$strategy" "$count"
+        fi
+    fi
+}
+
+_record_and_maybe_capture() {
+    local category="$1"
+    local content="$2"
+    local indicator_count="$3"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    local content_hash
+    content_hash=$(echo "$content" | md5sum 2>/dev/null | cut -c1-8 || echo "$RANDOM")
+    
+    local obs_file="${OBSERVATIONS_DIR}/${category}-observations.json"
+    
+    if [[ ! -f "$obs_file" ]]; then
+        echo '{"observations": {}}' > "$obs_file"
+    fi
+    
+    local already_captured
+    already_captured=$(cat "${obs_file}.captured" 2>/dev/null | grep -o "\"hash\": \"${content_hash}\"" | head -1)
+    
+    if [[ -n "$already_captured" ]]; then
+        _log_detection "$category" "$content" "$indicator_count"
+        return 0
+    fi
+    
+    _log_detection "$category" "$content" "$indicator_count"
+    
+    local threshold=2
+    case "$category" in
+        idea) threshold=1 ;;
+        project) threshold=1 ;;
+        learning) threshold=2 ;;
+        *) threshold=2 ;;
+    esac
+    
+    if [[ $indicator_count -ge $threshold ]]; then
+        _capture_to_identity "$category" "$content" "$content_hash"
+    fi
+}
+
+_capture_to_identity() {
+    local category="$1"
+    local content="$2"
+    local content_hash="$3"
+    
+    case "$category" in
+        learning)
+            identity_add_learning "$content" "Auto-captured" "" "" 2>/dev/null || true
+            ;;
+        belief)
+            identity_add_belief "$content" "general" "" 2>/dev/null || true
+            ;;
+        challenge)
+            identity_add_challenge "$content" "" "" 2>/dev/null || true
+            ;;
+        project)
+            if ! identity_project_exists "$content" 2>/dev/null; then
+                identity_add_project "$content" "Auto-detected" "$(pwd)" "0" 2>/dev/null || true
+            fi
+            ;;
+        idea)
+            identity_add_idea "$content" "Auto-captured" "" "" 2>/dev/null || true
+            ;;
+        goal)
+            identity_add_goal "$content" "" "" 2>/dev/null || true
+            ;;
+        strategy)
+            identity_add_strategy "$content" "" "" "" 2>/dev/null || true
+            ;;
+    esac
+    
+    _log_capture "$category" "$content"
+    
+    local obs_file="${OBSERVATIONS_DIR}/${category}-observations.json"
+    echo "{\"hash\": \"$content_hash\", \"content\": \"$content\", \"captured\": true, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >> "${obs_file}.captured" 2>/dev/null || true
+}
+
+_log_detection() {
+    local category="$1"
+    local content="$2"
+    local count="$3"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    echo "[$timestamp] [detect] [$category] indicators=$count content=\"${content:0:80}\"" >> "$LOGS_DIR/identity-capture.log" 2>/dev/null || true
+}
+
+_log_capture() {
+    local category="$1"
+    local content="$2"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    echo "[$timestamp] [capture] [$category] content=\"${content:0:80}\"" >> "$LOGS_DIR/identity-capture.log" 2>/dev/null || true
 }
 
 # ============================================
 # EXPORTS
 # ============================================
 
+# Capture controller exports
 export -f capture_can_show_prompt
 export -f capture_record_prompt_shown
 export -f capture_record_response
@@ -473,3 +647,8 @@ export -f capture_get_session_gap
 export -f capture_get_next_prompt
 export -f capture_get_stats
 export -f capture_get_history
+
+# Silent capture exports
+export -f capture_from_prompt
+export -f capture_from_response
+export -f count_indicators

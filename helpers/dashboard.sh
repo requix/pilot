@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# dashboard-emitter.sh - Emit state to PILOT dashboard
-# Source this in hooks to send state updates
+# dashboard.sh - Emit state to PILOT dashboard
+# Part of PILOT - Personal Intelligence Layer for Optimized Tasks
+# Location: src/helpers/dashboard.sh (consolidated from src/lib/dashboard-emitter.sh)
+#
+# Source this in hooks to send state updates to the dashboard.
+#
+# Usage:
+#   source dashboard.sh
+#   dashboard_init
+#   dashboard_emit_phase OBSERVE "Working on feature"
+#   dashboard_emit_learning "Discovered pattern" "category" "tag1,tag2"
 
 DASHBOARD_DIR="${HOME}/.kiro/pilot/dashboard"
 SESSIONS_DIR="${DASHBOARD_DIR}/sessions"
@@ -19,7 +28,7 @@ dashboard_session_id() {
         cat "${HOME}/.kiro/pilot/.cache/current-session-id" 2>/dev/null
     else
         # Generate unique session ID with timestamp and random component
-        echo "pilot-$(date +%s)-$$-$RANDOM"
+        echo "pilot-$(date +%s)-$-$RANDOM"
     fi
 }
 

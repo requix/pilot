@@ -1,28 +1,369 @@
 #!/usr/bin/env bash
-# cross-file-intelligence.sh - Cross-File Intelligence for Adaptive Identity Capture
-# Part of PILOT - Connects insights across identity files
+# analysis.sh - Analysis and performance for PILOT
+# Part of PILOT - Personal Intelligence Layer for Optimized Tasks
+# Location: src/helpers/analysis.sh (consolidated from performance-manager.sh + cross-file-intelligence.sh)
 #
-# Features:
-# - Challenge-to-learning suggestion
-# - Strategy-to-belief suggestion
-# - Project-to-goal suggestion
-# - Idea-to-project suggestion
-# - Identity review generation
+# Combines performance management with cross-file intelligence.
 #
 # Usage:
-#   source cross-file-intelligence.sh
-#   crossfile_on_challenge_resolved "challenge_id"
-#   crossfile_on_strategy_success "strategy_id" 5
-#   crossfile_on_project_theme_detected "proj1 proj2 proj3"
+#   source analysis.sh
+#   perf_start_processing
+#   perf_record_time "ProjectDetector" 25
 #   crossfile_generate_review
 
 # Dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "${SCRIPT_DIR}/json-helpers.sh" ]] && source "${SCRIPT_DIR}/json-helpers.sh"
+[[ -f "${SCRIPT_DIR}/json.sh" ]] && source "${SCRIPT_DIR}/json.sh"
+
+# ============================================
+# PERFORMANCE MANAGEMENT (from performance-manager.sh)
+# ============================================
 
 # Directories and files
 PILOT_DATA="${PILOT_DATA:-$HOME/.pilot}"
 OBSERVATIONS_DIR="${PILOT_DATA}/observations"
+PERFORMANCE_FILE="${OBSERVATIONS_DIR}/performance.json"
+LOCK_FILE="${OBSERVATIONS_DIR}/.processing.lock"
+
+# Performance thresholds (in milliseconds)
+PERF_NORMAL_MS=50
+PERF_WARNING_MS=100
+PERF_CRITICAL_MS=200
+PERF_CONSECUTIVE_SLOW=3
+PERF_REENABLE_MS=3600000
+PERF_SESSION_OVERHEAD_WARN=5
+
+# Observation tiers
+TIER_MINIMAL="minimal"
+TIER_STANDARD="standard"
+TIER_FULL="full"
+
+# Detectors by tier
+DETECTORS_MINIMAL="ProjectDetector ChallengeDetector"
+DETECTORS_STANDARD="ProjectDetector ChallengeDetector LearningExtractor StrategyDetector IdeaCapturer BeliefDetector"
+DETECTORS_FULL="ProjectDetector ChallengeDetector LearningExtractor StrategyDetector IdeaCapturer BeliefDetector ModelDetector NarrativeDetector"
+
+_perf_ensure_file() {
+    mkdir -p "$OBSERVATIONS_DIR" 2>/dev/null || true
+    
+    if [[ ! -f "$PERFORMANCE_FILE" ]]; then
+        cat > "$PERFORMANCE_FILE" 2>/dev/null << 'EOF'
+{
+  "currentTier": "standard",
+  "detectorMetrics": {},
+  "disabledDetectors": [],
+  "tierHistory": [],
+  "sessionMetrics": {
+    "totalProcessingMs": 0,
+    "totalSessionMs": 0,
+    "callCount": 0
+  },
+  "lastUpdated": null
+}
+EOF
+    fi
+}
+
+perf_is_processing() {
+    if [[ -f "$LOCK_FILE" ]]; then
+        local lock_age
+        if [[ "$(uname)" == "Darwin" ]]; then
+            lock_age=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
+        else
+            lock_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+        fi
+        
+        if [[ $lock_age -gt 5 ]]; then
+            rm -f "$LOCK_FILE" 2>/dev/null || true
+            return 1
+        fi
+        return 0
+    fi
+    return 1
+}
+
+perf_start_processing() {
+    _perf_ensure_file
+    echo "$" > "$LOCK_FILE" 2>/dev/null || true
+}
+
+perf_end_processing() {
+    rm -f "$LOCK_FILE" 2>/dev/null || true
+}
+
+perf_get_tier() {
+    _perf_ensure_file
+    local tier
+    tier=$(json_read_file "$PERFORMANCE_FILE" ".currentTier")
+    echo "${tier:-$TIER_STANDARD}"
+}
+
+perf_set_tier() {
+    local new_tier="$1"
+    local reason="${2:-manual}"
+    
+    _perf_ensure_file
+    
+    local old_tier
+    old_tier=$(perf_get_tier)
+    
+    if [[ "$old_tier" != "$new_tier" ]]; then
+        local timestamp
+        timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        json_update_field "$PERFORMANCE_FILE" ".currentTier" "\"$new_tier\""
+        
+        local change_record="{\"from\": \"$old_tier\", \"to\": \"$new_tier\", \"timestamp\": \"$timestamp\", \"reason\": \"$reason\"}"
+        json_array_append "$PERFORMANCE_FILE" ".tierHistory" "$change_record"
+        
+        json_touch_file "$PERFORMANCE_FILE"
+    fi
+}
+
+perf_get_tier_detectors() {
+    local tier
+    tier=$(perf_get_tier)
+    
+    case "$tier" in
+        "$TIER_MINIMAL")  echo "$DETECTORS_MINIMAL" ;;
+        "$TIER_STANDARD") echo "$DETECTORS_STANDARD" ;;
+        "$TIER_FULL")     echo "$DETECTORS_FULL" ;;
+        *)                echo "$DETECTORS_STANDARD" ;;
+    esac
+}
+
+perf_detector_in_tier() {
+    local detector="$1"
+    local detectors
+    detectors=$(perf_get_tier_detectors)
+    
+    [[ " $detectors " == *" $detector "* ]]
+}
+
+perf_record_time() {
+    local detector="$1"
+    local duration_ms="$2"
+    
+    _perf_ensure_file
+    
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    local current_avg current_max call_count slow_count
+    current_avg=$(json_read_file "$PERFORMANCE_FILE" ".detectorMetrics.\"$detector\".avgMs")
+    current_max=$(json_read_file "$PERFORMANCE_FILE" ".detectorMetrics.\"$detector\".maxMs")
+    call_count=$(json_read_file "$PERFORMANCE_FILE" ".detectorMetrics.\"$detector\".callCount")
+    slow_count=$(json_read_file "$PERFORMANCE_FILE" ".detectorMetrics.\"$detector\".consecutiveSlowCalls")
+    
+    current_avg=${current_avg:-0}
+    current_max=${current_max:-0}
+    call_count=${call_count:-0}
+    slow_count=${slow_count:-0}
+    
+    local new_avg
+    if [[ $call_count -eq 0 ]]; then
+        new_avg=$duration_ms
+    else
+        new_avg=$(( (duration_ms * 30 + current_avg * 70) / 100 ))
+    fi
+    
+    local new_max=$current_max
+    [[ $duration_ms -gt $current_max ]] && new_max=$duration_ms
+    
+    if [[ $duration_ms -gt $PERF_WARNING_MS ]]; then
+        slow_count=$((slow_count + 1))
+    else
+        slow_count=0
+    fi
+    
+    local metrics="{\"avgMs\": $new_avg, \"maxMs\": $new_max, \"callCount\": $((call_count + 1)), \"consecutiveSlowCalls\": $slow_count, \"lastCall\": \"$timestamp\", \"lastDuration\": $duration_ms}"
+    json_set_nested "$PERFORMANCE_FILE" ".detectorMetrics.\"$detector\"" "$metrics"
+    
+    json_increment "$PERFORMANCE_FILE" ".sessionMetrics.totalProcessingMs" "$duration_ms"
+    json_increment "$PERFORMANCE_FILE" ".sessionMetrics.callCount" 1
+    
+    if [[ $slow_count -ge $PERF_CONSECUTIVE_SLOW ]] && [[ $duration_ms -gt $PERF_WARNING_MS ]]; then
+        _perf_disable_detector "$detector" "consecutive_slow_calls"
+    fi
+    
+    if [[ $duration_ms -gt $PERF_WARNING_MS ]]; then
+        echo "[PERF WARNING] $detector took ${duration_ms}ms (threshold: ${PERF_WARNING_MS}ms)" >&2
+    fi
+    
+    json_touch_file "$PERFORMANCE_FILE"
+}
+
+_perf_disable_detector() {
+    local detector="$1"
+    local reason="$2"
+    
+    local timestamp reenable_at
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    if [[ "$(uname)" == "Darwin" ]]; then
+        reenable_at=$(date -u -v+1H +"%Y-%m-%dT%H:%M:%SZ")
+    else
+        reenable_at=$(date -u -d "+1 hour" +"%Y-%m-%dT%H:%M:%SZ")
+    fi
+    
+    local disable_record="{\"detector\": \"$detector\", \"timestamp\": \"$timestamp\", \"reason\": \"$reason\", \"reEnableAt\": \"$reenable_at\"}"
+    json_array_append "$PERFORMANCE_FILE" ".disabledDetectors" "$disable_record"
+    
+    echo "[PERF] Auto-disabled $detector due to $reason. Will re-enable at $reenable_at" >&2
+}
+
+perf_should_run_detector() {
+    local detector="$1"
+    
+    _perf_ensure_file
+    
+    if ! perf_detector_in_tier "$detector"; then
+        return 1
+    fi
+    
+    local disabled_count
+    disabled_count=$(json_array_length "$PERFORMANCE_FILE" ".disabledDetectors")
+    
+    if [[ $disabled_count -gt 0 ]]; then
+        local now_epoch
+        now_epoch=$(date +%s)
+        
+        local i=0
+        while [[ $i -lt $disabled_count ]]; do
+            local disabled_detector reenable_at
+            disabled_detector=$(json_read_file "$PERFORMANCE_FILE" ".disabledDetectors[$i].detector")
+            reenable_at=$(json_read_file "$PERFORMANCE_FILE" ".disabledDetectors[$i].reEnableAt")
+            
+            if [[ "$disabled_detector" == "$detector" ]]; then
+                local reenable_epoch
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    reenable_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$reenable_at" +%s 2>/dev/null || echo 0)
+                else
+                    reenable_epoch=$(date -d "$reenable_at" +%s 2>/dev/null || echo 0)
+                fi
+                
+                if [[ $now_epoch -lt $reenable_epoch ]]; then
+                    return 1
+                else
+                    json_array_remove "$PERFORMANCE_FILE" ".disabledDetectors" "$i"
+                    echo "[PERF] Re-enabled $detector after cooldown" >&2
+                    return 0
+                fi
+            fi
+            i=$((i + 1))
+        done
+    fi
+    
+    return 0
+}
+
+perf_adjust_tier() {
+    _perf_ensure_file
+    
+    local current_tier avg_time
+    current_tier=$(perf_get_tier)
+    
+    local total_ms call_count
+    total_ms=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.totalProcessingMs")
+    call_count=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.callCount")
+    
+    total_ms=${total_ms:-0}
+    call_count=${call_count:-1}
+    
+    avg_time=$((total_ms / call_count))
+    
+    if [[ $avg_time -gt $PERF_WARNING_MS ]]; then
+        case "$current_tier" in
+            "$TIER_FULL")
+                perf_set_tier "$TIER_STANDARD" "performance_degradation"
+                ;;
+            "$TIER_STANDARD")
+                perf_set_tier "$TIER_MINIMAL" "performance_degradation"
+                ;;
+        esac
+    elif [[ $avg_time -lt $((PERF_NORMAL_MS / 2)) ]]; then
+        case "$current_tier" in
+            "$TIER_MINIMAL")
+                perf_set_tier "$TIER_STANDARD" "performance_improvement"
+                ;;
+            "$TIER_STANDARD")
+                perf_set_tier "$TIER_FULL" "performance_improvement"
+                ;;
+        esac
+    fi
+}
+
+perf_get_metrics() {
+    _perf_ensure_file
+    
+    local total_ms call_count
+    total_ms=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.totalProcessingMs")
+    call_count=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.callCount")
+    
+    total_ms=${total_ms:-0}
+    call_count=${call_count:-0}
+    
+    local avg_ms=0
+    [[ $call_count -gt 0 ]] && avg_ms=$((total_ms / call_count))
+    
+    local disabled_count
+    disabled_count=$(json_array_length "$PERFORMANCE_FILE" ".disabledDetectors")
+    
+    local tier
+    tier=$(perf_get_tier)
+    
+    echo "Tier: $tier"
+    echo "Avg Processing: ${avg_ms}ms"
+    echo "Total Calls: $call_count"
+    echo "Disabled Detectors: $disabled_count"
+}
+
+perf_get_session_overhead() {
+    _perf_ensure_file
+    
+    local total_processing total_session
+    total_processing=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.totalProcessingMs")
+    total_session=$(json_read_file "$PERFORMANCE_FILE" ".sessionMetrics.totalSessionMs")
+    
+    total_processing=${total_processing:-0}
+    total_session=${total_session:-1}
+    
+    if [[ $total_session -gt 0 ]]; then
+        echo $((total_processing * 100 / total_session))
+    else
+        echo 0
+    fi
+}
+
+perf_update_session_time() {
+    local session_ms="$1"
+    json_update_field "$PERFORMANCE_FILE" ".sessionMetrics.totalSessionMs" "$session_ms"
+}
+
+perf_check_overhead_warning() {
+    local overhead
+    overhead=$(perf_get_session_overhead)
+    
+    if [[ $overhead -gt $PERF_SESSION_OVERHEAD_WARN ]]; then
+        echo "[PERF WARNING] Observation overhead is ${overhead}% of session time (threshold: ${PERF_SESSION_OVERHEAD_WARN}%)" >&2
+        return 0
+    fi
+    return 1
+}
+
+perf_reset_session_metrics() {
+    _perf_ensure_file
+    
+    local reset_metrics='{"totalProcessingMs": 0, "totalSessionMs": 0, "callCount": 0}'
+    json_update_field "$PERFORMANCE_FILE" ".sessionMetrics" "$reset_metrics"
+}
+
+
+# ============================================
+# CROSS-FILE INTELLIGENCE (from cross-file-intelligence.sh)
+# ============================================
+
+# Files
 CROSSFILE_FILE="${OBSERVATIONS_DIR}/cross-file.json"
 IDENTITY_DIR="${PILOT_DATA}/identity"
 
@@ -39,10 +380,6 @@ IDEAS_MD="${IDENTITY_DIR}/IDEAS.md"
 CROSSFILE_STALE_DAYS=30
 CROSSFILE_IDEA_STALE_DAYS=90
 
-# ============================================
-# INITIALIZATION
-# ============================================
-
 _crossfile_ensure_file() {
     mkdir -p "$OBSERVATIONS_DIR" 2>/dev/null || true
     
@@ -58,11 +395,6 @@ EOF
     fi
 }
 
-# ============================================
-# CHALLENGE-TO-LEARNING
-# ============================================
-
-# Suggest learning extraction when challenge is resolved
 crossfile_on_challenge_resolved() {
     local challenge_id="$1"
     
@@ -71,7 +403,6 @@ crossfile_on_challenge_resolved() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    # Get challenge info from challenges.json
     local challenges_file="${OBSERVATIONS_DIR}/challenges.json"
     if [[ ! -f "$challenges_file" ]]; then
         return 1
@@ -84,7 +415,6 @@ crossfile_on_challenge_resolved() {
         return 1
     fi
     
-    # Create learning suggestion
     local suggestion="{
         \"type\": \"challenge_to_learning\",
         \"sourceFile\": \"CHALLENGES.md\",
@@ -99,7 +429,6 @@ crossfile_on_challenge_resolved() {
     json_array_append "$CROSSFILE_FILE" ".suggestions" "$suggestion"
     json_touch_file "$CROSSFILE_FILE"
     
-    # Return the suggestion
     cat << EOF
 {
   "type": "challenge_to_learning",
@@ -112,18 +441,12 @@ EOF
     return 0
 }
 
-# ============================================
-# STRATEGY-TO-BELIEF
-# ============================================
-
-# Suggest belief when strategy consistently works
 crossfile_on_strategy_success() {
     local strategy_id="$1"
     local success_count="${2:-0}"
     
     _crossfile_ensure_file
     
-    # Only suggest after 5+ successes
     if [[ $success_count -lt 5 ]]; then
         return 1
     fi
@@ -131,7 +454,6 @@ crossfile_on_strategy_success() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    # Get strategy info
     local strategies_file="${OBSERVATIONS_DIR}/strategies.json"
     if [[ ! -f "$strategies_file" ]]; then
         return 1
@@ -144,7 +466,6 @@ crossfile_on_strategy_success() {
         return 1
     fi
     
-    # Create belief suggestion
     local suggestion="{
         \"type\": \"strategy_to_belief\",
         \"sourceFile\": \"STRATEGIES.md\",
@@ -173,22 +494,15 @@ EOF
     return 0
 }
 
-# ============================================
-# PROJECT-TO-GOAL
-# ============================================
-
-# Suggest goal when projects share theme
 crossfile_on_project_theme_detected() {
-    local project_ids="$1"  # Space-separated list
+    local project_ids="$1"
     local theme="${2:-}"
     
     _crossfile_ensure_file
     
-    # Count projects
     local project_count
     project_count=$(echo "$project_ids" | wc -w | tr -d ' ')
     
-    # Only suggest after 3+ related projects
     if [[ $project_count -lt 3 ]]; then
         return 1
     fi
@@ -196,7 +510,6 @@ crossfile_on_project_theme_detected() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    # Create goal suggestion
     local suggestion="{
         \"type\": \"project_to_goal\",
         \"sourceFile\": \"PROJECTS.md\",
@@ -225,11 +538,6 @@ EOF
     return 0
 }
 
-# ============================================
-# IDEA-TO-PROJECT
-# ============================================
-
-# Suggest project creation when idea becomes active work
 crossfile_on_idea_becomes_work() {
     local idea_id="$1"
     local work_context="${2:-}"
@@ -239,7 +547,6 @@ crossfile_on_idea_becomes_work() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    # Get idea info
     local ideas_file="${OBSERVATIONS_DIR}/ideas.json"
     if [[ ! -f "$ideas_file" ]]; then
         return 1
@@ -252,7 +559,6 @@ crossfile_on_idea_becomes_work() {
         return 1
     fi
     
-    # Create project suggestion
     local suggestion="{
         \"type\": \"idea_to_project\",
         \"sourceFile\": \"IDEAS.md\",
@@ -280,11 +586,6 @@ EOF
     return 0
 }
 
-# ============================================
-# IDENTITY REVIEW
-# ============================================
-
-# Generate periodic identity review
 crossfile_generate_review() {
     _crossfile_ensure_file
     
@@ -296,9 +597,7 @@ crossfile_generate_review() {
     local stale_projects=""
     local resolved_challenges=""
     local stale_ideas=""
-    local suggested_connections=""
     
-    # Check for stale projects (30+ days inactive)
     local projects_file="${OBSERVATIONS_DIR}/projects.json"
     if [[ -f "$projects_file" ]]; then
         local project_ids
@@ -332,7 +631,6 @@ crossfile_generate_review() {
         done
     fi
     
-    # Check for resolved challenges
     local challenges_file="${OBSERVATIONS_DIR}/challenges.json"
     if [[ -f "$challenges_file" ]]; then
         local challenge_ids
@@ -341,7 +639,7 @@ crossfile_generate_review() {
         for challenge_id in $challenge_ids; do
             [[ -z "$challenge_id" ]] && continue
             
-            local status last_seen
+            local status
             status=$(json_read_file "$challenges_file" ".challenges.\"$challenge_id\".status")
             
             if [[ "$status" == "resolved" ]]; then
@@ -352,7 +650,6 @@ crossfile_generate_review() {
         done
     fi
     
-    # Check for stale ideas (90+ days in backlog)
     local ideas_file="${OBSERVATIONS_DIR}/ideas.json"
     if [[ -f "$ideas_file" ]]; then
         local idea_ids
@@ -386,16 +683,13 @@ crossfile_generate_review() {
         done
     fi
     
-    # Get pending suggestions
     local pending_count
     pending_count=$(json_read_file "$CROSSFILE_FILE" '.suggestions | map(select(.status == "pending")) | length' 2>/dev/null)
     pending_count=${pending_count:-0}
     
-    # Update last review timestamp
     json_update_field "$CROSSFILE_FILE" ".lastReview" "\"$timestamp\""
     json_touch_file "$CROSSFILE_FILE"
     
-    # Return review
     cat << EOF
 {
   "timestamp": "$timestamp",
@@ -407,38 +701,25 @@ crossfile_generate_review() {
 EOF
 }
 
-# ============================================
-# SUGGESTION MANAGEMENT
-# ============================================
-
-# Get pending suggestions
 crossfile_get_pending_suggestions() {
     _crossfile_ensure_file
-    
     json_read_file "$CROSSFILE_FILE" '.suggestions | map(select(.status == "pending"))'
 }
 
-# Mark suggestion as acted upon
 crossfile_mark_suggestion_acted() {
     local index="$1"
-    
     _crossfile_ensure_file
-    
     json_update_field "$CROSSFILE_FILE" ".suggestions[$index].status" "\"acted\""
     json_touch_file "$CROSSFILE_FILE"
 }
 
-# Mark suggestion as dismissed
 crossfile_mark_suggestion_dismissed() {
     local index="$1"
-    
     _crossfile_ensure_file
-    
     json_update_field "$CROSSFILE_FILE" ".suggestions[$index].status" "\"dismissed\""
     json_touch_file "$CROSSFILE_FILE"
 }
 
-# Record a connection between files
 crossfile_record_connection() {
     local source_file="$1"
     local source_item="$2"
@@ -464,7 +745,6 @@ crossfile_record_connection() {
     json_touch_file "$CROSSFILE_FILE"
 }
 
-# Get connections for an item
 crossfile_get_connections() {
     local file="$1"
     local item="$2"
@@ -478,6 +758,24 @@ crossfile_get_connections() {
 # EXPORTS
 # ============================================
 
+# Performance exports
+export -f perf_is_processing
+export -f perf_start_processing
+export -f perf_end_processing
+export -f perf_get_tier
+export -f perf_set_tier
+export -f perf_get_tier_detectors
+export -f perf_detector_in_tier
+export -f perf_record_time
+export -f perf_should_run_detector
+export -f perf_adjust_tier
+export -f perf_get_metrics
+export -f perf_get_session_overhead
+export -f perf_update_session_time
+export -f perf_check_overhead_warning
+export -f perf_reset_session_metrics
+
+# Cross-file exports
 export -f crossfile_on_challenge_resolved
 export -f crossfile_on_strategy_success
 export -f crossfile_on_project_theme_detected

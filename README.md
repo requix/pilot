@@ -78,12 +78,10 @@ PILOT uses a simple structure:
 ~/.kiro/agents/pilot.json   # Agent config (only file in .kiro)
 
 ~/.pilot/                   # Everything else
-├── hooks/                  # Hook scripts
+├── hooks/                  # Hook scripts (6 files)
 ├── steering/               # Methodology files
 ├── system/                 # System files
-│   ├── lib/                # Shared libraries
-│   ├── detectors/          # Identity detectors
-│   ├── scripts/            # Utility scripts
+│   ├── helpers/            # Consolidated libraries & detectors (6 files)
 │   └── resources/          # Algorithm & Principles
 ├── identity/               # Your personal context
 ├── learnings/              # Captured solutions
@@ -97,7 +95,7 @@ PILOT uses a simple structure:
 └── logs/                   # System logs
 ```
 
-**Simple:** One file in `~/.kiro/`, everything else in `~/.pilot/`.
+**Simple:** One file in `~/.kiro/`, everything else in `~/.pilot/`. Total: 12 shell scripts (6 hooks + 6 helpers).
 
 ## Working Modes
 
@@ -173,13 +171,17 @@ All implemented as bash hooks — no external dependencies.
 src/
 ├── agents/             # Agent configuration
 │   └── pilot.json
-├── hooks/              # Hook scripts
-├── lib/                # Shared libraries
-├── detectors/          # Identity detectors
+├── hooks/              # Hook scripts (6 files)
+├── helpers/            # Consolidated libraries & detectors (6 files)
+│   ├── json.sh         # JSON utilities
+│   ├── dashboard.sh    # Dashboard emission
+│   ├── identity.sh     # Identity & observation init
+│   ├── capture.sh      # Capture controller & silent capture
+│   ├── analysis.sh     # Cross-file intelligence & performance
+│   └── detectors.sh    # All 8 detectors consolidated
 ├── identity/           # Identity templates
 ├── resources/          # Algorithm & Principles
-├── steering/           # Steering files
-└── scripts/            # Utility scripts
+└── steering/           # Steering files
 ```
 
 ## Design Principles

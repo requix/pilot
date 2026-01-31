@@ -12,8 +12,8 @@ METRICS_DIR="${PILOT_HOME}/metrics"
 OBSERVATIONS_DIR="${PILOT_HOME}/observations"
 SYSTEM_DIR="${PILOT_HOME}/system"
 
-# Source dashboard emitter (use consolidated emitter library)
-[[ -f "${SYSTEM_DIR}/lib/dashboard-emitter.sh" ]] && source "${SYSTEM_DIR}/lib/dashboard-emitter.sh" 2>/dev/null || true
+# Source dashboard emitter (use consolidated helpers library)
+[[ -f "${SYSTEM_DIR}/helpers/dashboard.sh" ]] && source "${SYSTEM_DIR}/helpers/dashboard.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -40,27 +40,27 @@ mkdir -p "$CACHE_DIR" "$METRICS_DIR" "$LEARNINGS_DIR" "$IDENTITY_DIR" "$LOGS_DIR
 # Auto-create observation directories if missing (fail-safe)
 mkdir -p "$OBSERVATIONS_DIR" "${IDENTITY_DIR}/.history" 2>/dev/null || true
 
-# Source observation-init if available for full initialization
-if [[ -f "${SYSTEM_DIR}/lib/observation-init.sh" ]]; then
-    source "${SYSTEM_DIR}/lib/observation-init.sh" 2>/dev/null || true
+# Source identity helpers for observation initialization
+if [[ -f "${SYSTEM_DIR}/helpers/identity.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/identity.sh" 2>/dev/null || true
     ensure_observation_dirs 2>/dev/null || true
 fi
 
-# Source performance manager for tier management
-if [[ -f "${SYSTEM_DIR}/lib/performance-manager.sh" ]]; then
-    source "${SYSTEM_DIR}/lib/performance-manager.sh" 2>/dev/null || true
+# Source analysis helpers for tier management
+if [[ -f "${SYSTEM_DIR}/helpers/analysis.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/analysis.sh" 2>/dev/null || true
     perf_init 2>/dev/null || true
 fi
 
-# Source capture controller for session reset
-if [[ -f "${SYSTEM_DIR}/lib/capture-controller.sh" ]]; then
-    source "${SYSTEM_DIR}/lib/capture-controller.sh" 2>/dev/null || true
+# Source capture helpers for session reset
+if [[ -f "${SYSTEM_DIR}/helpers/capture.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/capture.sh" 2>/dev/null || true
     capture_reset_session 2>/dev/null || true
 fi
 
 # Record session start for project detection
-if [[ -f "${SYSTEM_DIR}/detectors/project-detector.sh" ]]; then
-    source "${SYSTEM_DIR}/detectors/project-detector.sh" 2>/dev/null || true
+if [[ -f "${SYSTEM_DIR}/helpers/detectors.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/detectors.sh" 2>/dev/null || true
     WORKING_DIR=$(pwd 2>/dev/null || echo "$HOME")
     PROJECT_ID=$(project_generate_id "$WORKING_DIR" 2>/dev/null || echo "")
     if [[ -n "$PROJECT_ID" ]]; then
@@ -109,8 +109,8 @@ TOTAL_LEARNINGS=$(find "$LEARNINGS_DIR" -name "*_learning.md" -type f 2>/dev/nul
 
 # Get current observation tier
 CURRENT_TIER="standard"
-if [[ -f "${SYSTEM_DIR}/lib/performance-manager.sh" ]]; then
-    source "${SYSTEM_DIR}/lib/performance-manager.sh" 2>/dev/null || true
+if [[ -f "${SYSTEM_DIR}/helpers/analysis.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/analysis.sh" 2>/dev/null || true
     CURRENT_TIER=$(perf_get_tier 2>/dev/null || echo "standard")
 fi
 

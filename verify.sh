@@ -72,10 +72,8 @@ echo ""
 echo "System:"
 check "Resources (the-algorithm.md)" test -f "${PILOT_HOME}/system/resources/the-algorithm.md"
 check "Resources (pilot-principles.md)" test -f "${PILOT_HOME}/system/resources/pilot-principles.md"
-LIB_COUNT=$(find "${PILOT_HOME}/system/lib" -name "*.sh" -type f 2>/dev/null | wc -l | tr -d ' ')
-check "Libraries (${LIB_COUNT} files)" test "${LIB_COUNT}" -ge 1
-DETECTOR_COUNT=$(find "${PILOT_HOME}/system/detectors" -name "*.sh" -type f 2>/dev/null | wc -l | tr -d ' ')
-check "Detectors (${DETECTOR_COUNT} files)" test "${DETECTOR_COUNT}" -ge 1
+HELPER_COUNT=$(find "${PILOT_HOME}/system/helpers" -name "*.sh" -type f 2>/dev/null | wc -l | tr -d ' ')
+check "Helpers (${HELPER_COUNT} files)" test "${HELPER_COUNT}" -ge 1
 echo ""
 
 # Identity
