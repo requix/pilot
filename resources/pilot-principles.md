@@ -53,7 +53,7 @@ These aren't features to build - they're principles that guide architectural dec
 **Why:** Models change monthly. Architecture lasts years.
 
 **In Practice:**
-- PILOT works with Claude, could work with others
+- PILOT works with Kiro, architecture is model-agnostic
 - Memory system matters more than which model
 - Hooks matter more than prompt engineering
 

@@ -6,15 +6,14 @@ inclusion: always
 
 ## ⚡ Quick Reference (READ FIRST)
 
-### Path Reference (CRITICAL - DO NOT CONFUSE)
+### Path Reference (CRITICAL)
 
-| Path | Purpose | Use For |
-|------|---------|---------|
-| `~/.pilot/` | **User data** | Learnings, identity, user config |
-| `~/.kiro/pilot/` | **System files** | Memory, cache, metrics (internal) |
+| Path | Purpose |
+|------|---------|
+| `~/.pilot/` | **All PILOT data** - learnings, identity, memory, hooks, steering, system |
+| `~/.kiro/agents/pilot.json` | Agent configuration (only file in .kiro) |
 
-**ALWAYS save learnings to:** `~/.pilot/learnings/$(date +%Y%m%d).md`
-**NEVER save learnings to:** `~/.kiro/pilot/` (this is for system files only!)
+**Save learnings to:** `~/.pilot/learnings/$(date +%Y%m%d).md`
 
 ### Learning Capture Command
 ```bash
@@ -107,7 +106,7 @@ When you solve a non-trivial problem, debug an issue, or discover something valu
 
 ### Validation Checklist
 Before saving a learning, verify:
-- [ ] Path starts with `~/.pilot/learnings/` (NOT `~/.kiro/pilot/`)
+- [ ] Path starts with `~/.pilot/learnings/`
 - [ ] File follows naming convention: `YYYYMMDD.md` or `topic-name.md`
 
 ### Searching Past Learnings
