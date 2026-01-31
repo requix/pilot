@@ -1,32 +1,174 @@
 #!/usr/bin/env bash
-# identity-writer.sh - Identity file management for Adaptive Identity Capture
-# Part of PILOT - Handles reading and writing identity files with history tracking
+# identity.sh - Identity management for PILOT
+# Part of PILOT - Personal Intelligence Layer for Optimized Tasks
+# Location: src/helpers/identity.sh (consolidated from observation-init.sh + identity-writer.sh)
 #
-# Features:
-# - Safe write with backup
-# - History tracking in .history/
-# - File format parsers for each identity file type
+# Combines observation directory initialization with identity file management.
+# Fail-safe design: always returns safe defaults on error.
 #
 # Usage:
-#   source identity-writer.sh
-#   identity_add_project "my-project" "Description" "/path/to/project" 40
-#   identity_add_goal "My Goal" "Description" "project1,project2"
+#   source identity.sh
+#   ensure_observation_dirs
+#   identity_add_project "my-project" "Description" "/path" 40
 
 # Dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "${SCRIPT_DIR}/json-helpers.sh" ]] && source "${SCRIPT_DIR}/json-helpers.sh"
+[[ -f "${SCRIPT_DIR}/json.sh" ]] && source "${SCRIPT_DIR}/json.sh"
 
-# Directories
+# ============================================
+# OBSERVATION INITIALIZATION (from observation-init.sh)
+# ============================================
+
+# Base directories
 PILOT_DATA="${PILOT_DATA:-$HOME/.pilot}"
+OBSERVATIONS_DIR="${PILOT_DATA}/observations"
 IDENTITY_DIR="${PILOT_DATA}/identity"
+IDENTITY_HISTORY_DIR="${IDENTITY_DIR}/.history"
+
+# Observation files
+PROJECTS_FILE="${OBSERVATIONS_DIR}/projects.json"
+SESSIONS_FILE="${OBSERVATIONS_DIR}/sessions.json"
+PATTERNS_FILE="${OBSERVATIONS_DIR}/patterns.json"
+CHALLENGES_FILE="${OBSERVATIONS_DIR}/challenges.json"
+PROMPTS_FILE="${OBSERVATIONS_DIR}/prompts.json"
+CROSSFILE_FILE="${OBSERVATIONS_DIR}/cross-file.json"
+PERFORMANCE_FILE="${OBSERVATIONS_DIR}/performance.json"
+
+# Initialize empty JSON file with default structure
+# Usage: init_json_file "/path/to/file.json" '{"key": "value"}'
+init_json_file() {
+    local file="$1"
+    local default_content="${2:-{}}"
+    
+    if [[ ! -f "$file" ]]; then
+        echo "$default_content" > "$file" 2>/dev/null || true
+    fi
+}
+
+# Ensure all observation directories exist
+# Returns 0 on success, 1 if directories couldn't be created (read-only filesystem)
+ensure_observation_dirs() {
+    local success=0
+    
+    # Create main directories
+    mkdir -p "$OBSERVATIONS_DIR" 2>/dev/null || success=1
+    mkdir -p "$IDENTITY_HISTORY_DIR" 2>/dev/null || success=1
+    
+    # Initialize observation files with default structures
+    init_json_file "$PROJECTS_FILE" '{
+  "projects": {},
+  "lastUpdated": null
+}'
+    
+    init_json_file "$SESSIONS_FILE" '{
+  "sessions": [],
+  "currentSession": null,
+  "lastUpdated": null
+}'
+    
+    init_json_file "$PATTERNS_FILE" '{
+  "beliefs": {},
+  "strategies": {},
+  "ideas": {},
+  "models": {},
+  "narratives": {},
+  "workingStyle": {},
+  "lastUpdated": null
+}'
+    
+    init_json_file "$CHALLENGES_FILE" '{
+  "challenges": {},
+  "resolved": [],
+  "lastUpdated": null
+}'
+    
+    init_json_file "$PROMPTS_FILE" '{
+  "history": [],
+  "stats": {
+    "totalShown": 0,
+    "totalAccepted": 0,
+    "acceptanceRate": 0,
+    "consecutiveDismissals": 0,
+    "frequencyMultiplier": 1.0
+  },
+  "limits": {
+    "sessionPrompts": 0,
+    "weekStart": null,
+    "weekPrompts": 0
+  }
+}'
+    
+    init_json_file "$CROSSFILE_FILE" '{
+  "connections": [],
+  "suggestions": [],
+  "lastReview": null
+}'
+    
+    init_json_file "$PERFORMANCE_FILE" '{
+  "currentTier": "standard",
+  "detectorMetrics": {},
+  "disabledDetectors": [],
+  "tierHistory": [],
+  "lastUpdated": null
+}'
+    
+    return $success
+}
+
+# Check if observation system is writable
+# Returns 0 if writable, 1 if read-only
+is_observation_writable() {
+    local test_file="${OBSERVATIONS_DIR}/.write-test-$"
+    
+    if touch "$test_file" 2>/dev/null; then
+        rm -f "$test_file" 2>/dev/null
+        return 0
+    fi
+    return 1
+}
+
+# Get observation directory path
+get_observations_dir() {
+    echo "$OBSERVATIONS_DIR"
+}
+
+# Get identity history directory path
+get_identity_history_dir() {
+    echo "$IDENTITY_HISTORY_DIR"
+}
+
+# Check if observation system is initialized
+is_observation_initialized() {
+    [[ -d "$OBSERVATIONS_DIR" ]] && [[ -f "$PROJECTS_FILE" ]]
+}
+
+# Reset observation state (for testing or user request)
+# WARNING: This deletes all observation data!
+reset_observation_state() {
+    if [[ -d "$OBSERVATIONS_DIR" ]]; then
+        rm -rf "$OBSERVATIONS_DIR" 2>/dev/null || true
+    fi
+    ensure_observation_dirs
+}
+
+# Get current timestamp in ISO format
+get_timestamp() {
+    date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+# ============================================
+# IDENTITY WRITING (from identity-writer.sh)
+# ============================================
+
+# Directories (identity-specific)
 HISTORY_DIR="${IDENTITY_DIR}/.history"
 
 # Identity files
-PROJECTS_FILE="${IDENTITY_DIR}/PROJECTS.md"
+ID_PROJECTS_FILE="${IDENTITY_DIR}/PROJECTS.md"
 GOALS_FILE="${IDENTITY_DIR}/GOALS.md"
 MISSION_FILE="${IDENTITY_DIR}/MISSION.md"
 BELIEFS_FILE="${IDENTITY_DIR}/BELIEFS.md"
-CHALLENGES_FILE="${IDENTITY_DIR}/CHALLENGES.md"
+ID_CHALLENGES_FILE="${IDENTITY_DIR}/CHALLENGES.md"
 IDEAS_FILE="${IDENTITY_DIR}/IDEAS.md"
 LEARNED_FILE="${IDENTITY_DIR}/LEARNED.md"
 MODELS_FILE="${IDENTITY_DIR}/MODELS.md"
@@ -34,18 +176,10 @@ NARRATIVES_FILE="${IDENTITY_DIR}/NARRATIVES.md"
 STRATEGIES_FILE="${IDENTITY_DIR}/STRATEGIES.md"
 CONTEXT_FILE="${IDENTITY_DIR}/context.md"
 
-# ============================================
-# INITIALIZATION
-# ============================================
-
 # Ensure identity directories exist
 _identity_ensure_dirs() {
     mkdir -p "$IDENTITY_DIR" "$HISTORY_DIR" 2>/dev/null || true
 }
-
-# ============================================
-# HISTORY TRACKING
-# ============================================
 
 # Record a change to history
 _identity_record_history() {
@@ -69,10 +203,6 @@ _identity_record_history() {
     local change_record="{\"timestamp\": \"$timestamp\", \"action\": \"$action\", \"details\": \"$details\"}"
     json_array_append "$history_file" ".changes" "$change_record" 2>/dev/null || true
 }
-
-# ============================================
-# SAFE FILE OPERATIONS
-# ============================================
 
 # Safe write with backup
 _identity_safe_write() {
@@ -122,14 +252,15 @@ _identity_safe_append() {
     fi
 }
 
+
 # ============================================
 # PROJECTS.md
 # ============================================
 
 # Initialize PROJECTS.md if it doesn't exist
 _identity_init_projects() {
-    if [[ ! -f "$PROJECTS_FILE" ]]; then
-        _identity_safe_write "$PROJECTS_FILE" "# Active Projects
+    if [[ ! -f "$ID_PROJECTS_FILE" ]]; then
+        _identity_safe_write "$ID_PROJECTS_FILE" "# Active Projects
 
 ---
 *Total Allocation: 0%*
@@ -165,7 +296,7 @@ identity_add_project() {
     
     # Insert before the footer (--- line)
     local content
-    content=$(cat "$PROJECTS_FILE")
+    content=$(cat "$ID_PROJECTS_FILE")
     
     # Remove old footer, add project, add new footer
     local new_content
@@ -178,8 +309,8 @@ $entry
 *Last Updated: $added_date*
 "
     
-    if _identity_safe_write "$PROJECTS_FILE" "$new_content"; then
-        _identity_record_history "$PROJECTS_FILE" "add_project" "$name"
+    if _identity_safe_write "$ID_PROJECTS_FILE" "$new_content"; then
+        _identity_record_history "$ID_PROJECTS_FILE" "add_project" "$name"
         return 0
     fi
     return 1
@@ -187,7 +318,7 @@ $entry
 
 # Get total allocation from all projects
 identity_get_total_allocation() {
-    if [[ ! -f "$PROJECTS_FILE" ]]; then
+    if [[ ! -f "$ID_PROJECTS_FILE" ]]; then
         echo "0"
         return
     fi
@@ -199,7 +330,7 @@ identity_get_total_allocation() {
             alloc=$(echo "$line" | grep -oE '[0-9]+' | head -1)
             total=$((total + ${alloc:-0}))
         fi
-    done < "$PROJECTS_FILE"
+    done < "$ID_PROJECTS_FILE"
     
     echo "$total"
 }
@@ -208,8 +339,8 @@ identity_get_total_allocation() {
 identity_project_exists() {
     local name="$1"
     
-    if [[ -f "$PROJECTS_FILE" ]]; then
-        grep -q "^## $name$" "$PROJECTS_FILE"
+    if [[ -f "$ID_PROJECTS_FILE" ]]; then
+        grep -q "^## $name$" "$ID_PROJECTS_FILE"
     else
         return 1
     fi
@@ -219,13 +350,13 @@ identity_project_exists() {
 identity_archive_project() {
     local name="$1"
     
-    if [[ ! -f "$PROJECTS_FILE" ]]; then
+    if [[ ! -f "$ID_PROJECTS_FILE" ]]; then
         return 1
     fi
     
     # This is a simplified implementation
     # In production, would move to "Archived Projects" section
-    _identity_record_history "$PROJECTS_FILE" "archive_project" "$name"
+    _identity_record_history "$ID_PROJECTS_FILE" "archive_project" "$name"
     return 0
 }
 
@@ -293,8 +424,8 @@ $entry
 
 # Initialize CHALLENGES.md if it doesn't exist
 _identity_init_challenges() {
-    if [[ ! -f "$CHALLENGES_FILE" ]]; then
-        _identity_safe_write "$CHALLENGES_FILE" "# Current Challenges
+    if [[ ! -f "$ID_CHALLENGES_FILE" ]]; then
+        _identity_safe_write "$ID_CHALLENGES_FILE" "# Current Challenges
 
 ## Active Challenges
 
@@ -344,16 +475,16 @@ EOF
             cat "$temp_entry" >> "$temp_output"
             inserted=1
         fi
-    done < "$CHALLENGES_FILE"
+    done < "$ID_CHALLENGES_FILE"
     
     rm -f "$temp_entry"
     
     # Update last updated using perl for portability
     perl -i -pe "s/\*Last Updated:.*\*/\*Last Updated: $added_date\*/" "$temp_output" 2>/dev/null || true
     
-    if _identity_safe_write "$CHALLENGES_FILE" "$(cat "$temp_output")"; then
+    if _identity_safe_write "$ID_CHALLENGES_FILE" "$(cat "$temp_output")"; then
         rm -f "$temp_output"
-        _identity_record_history "$CHALLENGES_FILE" "add_challenge" "$name"
+        _identity_record_history "$ID_CHALLENGES_FILE" "add_challenge" "$name"
         return 0
     fi
     rm -f "$temp_output"
@@ -417,6 +548,7 @@ $entry
     fi
     return 1
 }
+
 
 # ============================================
 # BELIEFS.md
@@ -815,6 +947,17 @@ identity_update_preference() {
 # EXPORTS
 # ============================================
 
+# Observation exports
+export -f ensure_observation_dirs
+export -f is_observation_writable
+export -f get_observations_dir
+export -f get_identity_history_dir
+export -f is_observation_initialized
+export -f reset_observation_state
+export -f get_timestamp
+export -f init_json_file
+
+# Identity exports
 export -f identity_add_project
 export -f identity_get_total_allocation
 export -f identity_project_exists

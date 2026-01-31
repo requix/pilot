@@ -18,12 +18,13 @@ OBSERVATIONS_DIR="${PILOT_DIR}/observations"
 mkdir -p "$LEARNINGS_DIR" "$SESSIONS_DIR" "$LOGS_DIR" "$HOT_MEMORY" "$COLD_MEMORY" "$METRICS_DIR" "$OBSERVATIONS_DIR" 2>/dev/null || true
 
 # Source helper libraries (fail-safe)
-[[ -f "${PILOT_HOME}/system/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/system/lib/json-helpers.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/system/lib/performance-manager.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/cross-file-intelligence.sh" ]] && source "${PILOT_HOME}/system/lib/cross-file-intelligence.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/silent-capture.sh" ]] && source "${PILOT_HOME}/system/lib/silent-capture.sh" 2>/dev/null || true
-# Use only dashboard-emitter.sh (consolidated emitter library)
-[[ -f "${PILOT_HOME}/system/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/system/lib/dashboard-emitter.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/json.sh" ]] && source "${PILOT_HOME}/system/helpers/json.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/analysis.sh" ]] && source "${PILOT_HOME}/system/helpers/analysis.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/capture.sh" ]] && source "${PILOT_HOME}/system/helpers/capture.sh" 2>/dev/null || true
+# Use only dashboard.sh (consolidated emitter library)
+[[ -f "${PILOT_HOME}/system/helpers/dashboard.sh" ]] && source "${PILOT_HOME}/system/helpers/dashboard.sh" 2>/dev/null || true
+# Source consolidated detectors
+[[ -f "${PILOT_HOME}/system/helpers/detectors.sh" ]] && source "${PILOT_HOME}/system/helpers/detectors.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -294,46 +295,35 @@ TODAYS_LEARNINGS=$(find "$LEARNINGS_DIR" -name "*_learning.md" -mtime 0 2>/dev/n
 # ADAPTIVE IDENTITY CAPTURE: Deferred analysis
 # ============================================
 
-# Check for resolved challenges
-if [[ -f "${PILOT_HOME}/system/detectors/challenge-detector.sh" ]]; then
-    source "${PILOT_HOME}/system/detectors/challenge-detector.sh" 2>/dev/null || true
-    
-    RESOLVED=$(challenge_get_resolved 2>/dev/null) || true
-    if [[ -n "$RESOLVED" ]]; then
-        # Suggest learning extraction for resolved challenges
-        while IFS= read -r resolved_challenge; do
-            [[ -z "$resolved_challenge" ]] && continue
-            CHALLENGE_ID=$(echo "$resolved_challenge" | grep -o '"challengeId": "[^"]*"' | sed 's/.*": "//;s/"$//')
-            if [[ -n "$CHALLENGE_ID" ]]; then
-                crossfile_on_challenge_resolved "$CHALLENGE_ID" 2>/dev/null || true
-            fi
-        done <<< "$RESOLVED"
-    fi
-fi
-
-# Check for strategy successes
-if [[ -f "${PILOT_HOME}/system/detectors/strategy-detector.sh" ]]; then
-    source "${PILOT_HOME}/system/detectors/strategy-detector.sh" 2>/dev/null || true
-    
-    SUGGESTIONS=$(strategy_get_suggestions 2>/dev/null) || true
-    while IFS= read -r suggestion; do
-        [[ -z "$suggestion" ]] && continue
-        STRATEGY_ID=$(echo "$suggestion" | grep -o '"strategyId": "[^"]*"' | sed 's/.*": "//;s/"$//')
-        SUCCESS_COUNT=$(echo "$suggestion" | grep -o '"successCount": [0-9]*' | grep -o '[0-9]*')
-        if [[ -n "$STRATEGY_ID" ]] && [[ "${SUCCESS_COUNT:-0}" -ge 5 ]]; then
-            crossfile_on_strategy_success "$STRATEGY_ID" "$SUCCESS_COUNT" 2>/dev/null || true
+# Check for resolved challenges (functions available from detectors.sh)
+RESOLVED=$(challenge_get_resolved 2>/dev/null) || true
+if [[ -n "$RESOLVED" ]]; then
+    # Suggest learning extraction for resolved challenges
+    while IFS= read -r resolved_challenge; do
+        [[ -z "$resolved_challenge" ]] && continue
+        CHALLENGE_ID=$(echo "$resolved_challenge" | grep -o '"challengeId": "[^"]*"' | sed 's/.*": "//;s/"$//')
+        if [[ -n "$CHALLENGE_ID" ]]; then
+            crossfile_on_challenge_resolved "$CHALLENGE_ID" 2>/dev/null || true
         fi
-    done <<< "$SUGGESTIONS"
+    done <<< "$RESOLVED"
 fi
 
-# Record session end time for project tracking
-if [[ -f "${PILOT_HOME}/system/detectors/project-detector.sh" ]]; then
-    source "${PILOT_HOME}/system/detectors/project-detector.sh" 2>/dev/null || true
-    WORKING_DIR=$(pwd 2>/dev/null || echo "$HOME")
-    PROJECT_ID=$(project_generate_id "$WORKING_DIR" 2>/dev/null || echo "")
-    # Session duration would be calculated from session start, but we don't have that here
-    # The project detector already recorded the session start in agent-spawn
-fi
+# Check for strategy successes (functions available from detectors.sh)
+SUGGESTIONS=$(strategy_get_suggestions 2>/dev/null) || true
+while IFS= read -r suggestion; do
+    [[ -z "$suggestion" ]] && continue
+    STRATEGY_ID=$(echo "$suggestion" | grep -o '"strategyId": "[^"]*"' | sed 's/.*": "//;s/"$//')
+    SUCCESS_COUNT=$(echo "$suggestion" | grep -o '"successCount": [0-9]*' | grep -o '[0-9]*')
+    if [[ -n "$STRATEGY_ID" ]] && [[ "${SUCCESS_COUNT:-0}" -ge 5 ]]; then
+        crossfile_on_strategy_success "$STRATEGY_ID" "$SUCCESS_COUNT" 2>/dev/null || true
+    fi
+done <<< "$SUGGESTIONS"
+
+# Record session end time for project tracking (functions available from detectors.sh)
+WORKING_DIR=$(pwd 2>/dev/null || echo "$HOME")
+PROJECT_ID=$(project_generate_id "$WORKING_DIR" 2>/dev/null || echo "")
+# Session duration would be calculated from session start, but we don't have that here
+# The project detector already recorded the session start in agent-spawn
 
 echo "✅ Session archived: $ARCHIVE_DIR/summary-$SESSION_TIME.md"
 [ "$TODAYS_LEARNINGS" -gt 0 ] && echo "📚 Learnings captured today: $TODAYS_LEARNINGS"

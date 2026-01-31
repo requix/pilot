@@ -30,21 +30,21 @@ PILOT files are installed to two locations:
 
 ```
 ~/.kiro/                    # Kiro integration
-├── pilot/                  # PILOT system
-│   ├── identity/           # Identity templates
-│   ├── resources/          # Algorithm & principles
-│   ├── memory/             # Three-tier memory
-│   ├── lib/                # Shared libraries
-│   ├── detectors/          # Identity detectors
-│   └── metrics/            # Session metrics
-├── agents/pilot.json       # Agent configuration
-├── hooks/pilot/            # Hook scripts
-└── steering/pilot/         # Steering files
+└── agents/pilot.json       # Agent configuration
 
-~/.pilot/                   # User data
-├── learnings/              # Auto-captured learnings
+~/.pilot/                   # Everything else
+├── hooks/                  # Hook scripts
+├── steering/               # Steering files
+├── system/                 # System files
+│   ├── helpers/            # Consolidated libraries & detectors (6 files)
+│   └── resources/          # Algorithm & principles
 ├── identity/               # Your personal context
+├── learnings/              # Auto-captured learnings
 ├── observations/           # Adaptive identity capture
+├── memory/                 # Three-tier memory
+│   ├── hot/                # Current session
+│   ├── warm/               # Recent context
+│   └── cold/               # Archive
 └── sessions/               # Session archives
 ```
 
@@ -130,33 +130,29 @@ If you prefer to install without the script:
 
 ```bash
 # From the src directory
-mkdir -p "$HOME/.kiro/pilot/identity"
-mkdir -p "$HOME/.kiro/pilot/resources"
-mkdir -p "$HOME/.kiro/pilot/memory/hot"
-mkdir -p "$HOME/.kiro/pilot/memory/warm"
-mkdir -p "$HOME/.kiro/pilot/memory/cold"
-mkdir -p "$HOME/.kiro/pilot/lib"
-mkdir -p "$HOME/.kiro/pilot/detectors"
 mkdir -p "$HOME/.kiro/agents"
-mkdir -p "$HOME/.kiro/hooks/pilot"
-mkdir -p "$HOME/.kiro/steering/pilot"
-mkdir -p "$HOME/.pilot/learnings"
+mkdir -p "$HOME/.pilot/hooks"
+mkdir -p "$HOME/.pilot/steering"
+mkdir -p "$HOME/.pilot/system/helpers"
+mkdir -p "$HOME/.pilot/system/resources"
 mkdir -p "$HOME/.pilot/identity"
+mkdir -p "$HOME/.pilot/learnings"
 mkdir -p "$HOME/.pilot/observations"
+mkdir -p "$HOME/.pilot/memory/hot"
+mkdir -p "$HOME/.pilot/memory/warm"
+mkdir -p "$HOME/.pilot/memory/cold"
 
 # Copy files
 cp agents/pilot.json "$HOME/.kiro/agents/"
-cp hooks/*.sh "$HOME/.kiro/hooks/pilot/"
-cp lib/*.sh "$HOME/.kiro/pilot/lib/"
-cp detectors/*.sh "$HOME/.kiro/pilot/detectors/"
-cp resources/*.md "$HOME/.kiro/pilot/resources/"
-cp identity/*.md "$HOME/.kiro/pilot/identity/"
-cp steering/*.md "$HOME/.kiro/steering/pilot/"
+cp hooks/*.sh "$HOME/.pilot/hooks/"
+cp helpers/*.sh "$HOME/.pilot/system/helpers/"
+cp resources/*.md "$HOME/.pilot/system/resources/"
+cp identity/*.md "$HOME/.pilot/identity/"
+cp steering/*.md "$HOME/.pilot/steering/"
 
 # Make scripts executable
-chmod +x "$HOME/.kiro/hooks/pilot/"*.sh
-chmod +x "$HOME/.kiro/pilot/lib/"*.sh
-chmod +x "$HOME/.kiro/pilot/detectors/"*.sh
+chmod +x "$HOME/.pilot/hooks/"*.sh
+chmod +x "$HOME/.pilot/system/helpers/"*.sh
 ```
 
 ---

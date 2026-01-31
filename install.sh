@@ -112,8 +112,7 @@ mkdir -p "${KIRO_HOME}/agents"
 # PILOT directories
 mkdir -p "${PILOT_HOME}/hooks"
 mkdir -p "${PILOT_HOME}/steering"
-mkdir -p "${PILOT_HOME}/system/lib"
-mkdir -p "${PILOT_HOME}/system/detectors"
+mkdir -p "${PILOT_HOME}/system/helpers"
 mkdir -p "${PILOT_HOME}/system/scripts"
 mkdir -p "${PILOT_HOME}/system/resources"
 mkdir -p "${PILOT_HOME}/system/config"
@@ -151,16 +150,10 @@ log "SUCCESS" "Steering files installed"
 # Step 6: Install system files
 log "INFO" "Installing system files..."
 
-# Libraries
-if [[ -d "${SCRIPT_DIR}/lib" ]]; then
-    cp "${SCRIPT_DIR}/lib/"*.sh "${PILOT_HOME}/system/lib/" 2>/dev/null || true
-    chmod +x "${PILOT_HOME}/system/lib/"*.sh 2>/dev/null || true
-fi
-
-# Detectors
-if [[ -d "${SCRIPT_DIR}/detectors" ]]; then
-    cp "${SCRIPT_DIR}/detectors/"*.sh "${PILOT_HOME}/system/detectors/" 2>/dev/null || true
-    chmod +x "${PILOT_HOME}/system/detectors/"*.sh 2>/dev/null || true
+# Helpers (consolidated libraries and detectors)
+if [[ -d "${SCRIPT_DIR}/helpers" ]]; then
+    cp "${SCRIPT_DIR}/helpers/"*.sh "${PILOT_HOME}/system/helpers/" 2>/dev/null || true
+    chmod +x "${PILOT_HOME}/system/helpers/"*.sh 2>/dev/null || true
 fi
 
 # Scripts
@@ -279,7 +272,7 @@ echo "📁 Structure:"
 echo "   ~/.pilot/"
 echo "   ├── hooks/           # Hook scripts"
 echo "   ├── steering/        # Methodology"
-echo "   ├── system/          # Libraries, detectors, resources"
+echo "   ├── system/helpers/  # Consolidated libraries & detectors"
 echo "   ├── identity/        # Your context"
 echo "   ├── learnings/       # Auto-captured learnings"
 echo "   ├── observations/    # Adaptive identity capture"

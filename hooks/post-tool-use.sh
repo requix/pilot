@@ -13,8 +13,8 @@ DEBUG_DIR="${PILOT_HOME}/debug"
 mkdir -p "$HOT_MEMORY" "$METRICS_DIR" "$DEBUG_DIR" 2>/dev/null || true
 
 # Source dashboard emission library (fail-safe)
-if [[ -f "${SYSTEM_DIR}/lib/dashboard-emitter.sh" ]]; then
-    source "${SYSTEM_DIR}/lib/dashboard-emitter.sh" 2>/dev/null || true
+if [[ -f "${SYSTEM_DIR}/helpers/dashboard.sh" ]]; then
+    source "${SYSTEM_DIR}/helpers/dashboard.sh" 2>/dev/null || true
     # Test if function is available
     if declare -f dashboard_emit_phase >/dev/null 2>&1; then
         echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) dashboard_emit_phase function available" >> "$DEBUG_DIR/phase-detection.log" 2>/dev/null || true

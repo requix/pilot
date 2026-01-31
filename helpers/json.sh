@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# json-helpers.sh - JSON helper functions for Adaptive Identity Capture
-# Part of PILOT - Fail-safe design (always returns safe defaults on error)
+# json.sh - JSON helper functions for PILOT
+# Part of PILOT - Personal Intelligence Layer for Optimized Tasks
+# Location: src/helpers/json.sh (consolidated from src/lib/json-helpers.sh)
 #
 # Provides read/write/update operations for JSON files used by the observation system.
+# Fail-safe design: always returns safe defaults on error.
 # Requires: jq (standard JSON processor)
 #
 # Usage:
-#   source json-helpers.sh
+#   source json.sh
 #   value=$(json_read_file "/path/to/file.json" ".field")
 #   json_write_file "/path/to/file.json" '{"key": "value"}'
 #   json_update_field "/path/to/file.json" ".field" '"new_value"'

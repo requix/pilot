@@ -16,12 +16,13 @@ OBSERVATIONS_DIR="${PILOT_HOME}/observations"
 mkdir -p "$HOT_MEMORY" "$PATTERNS_DIR" "$LOGS_DIR" "$OBSERVATIONS_DIR" 2>/dev/null || true
 
 # Source helper libraries (fail-safe)
-[[ -f "${PILOT_HOME}/system/lib/json-helpers.sh" ]] && source "${PILOT_HOME}/system/lib/json-helpers.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/performance-manager.sh" ]] && source "${PILOT_HOME}/system/lib/performance-manager.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/capture-controller.sh" ]] && source "${PILOT_HOME}/system/lib/capture-controller.sh" 2>/dev/null || true
-[[ -f "${PILOT_HOME}/system/lib/silent-capture.sh" ]] && source "${PILOT_HOME}/system/lib/silent-capture.sh" 2>/dev/null || true
-# Use only dashboard-emitter.sh (consolidated emitter library)
-[[ -f "${PILOT_HOME}/system/lib/dashboard-emitter.sh" ]] && source "${PILOT_HOME}/system/lib/dashboard-emitter.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/json.sh" ]] && source "${PILOT_HOME}/system/helpers/json.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/analysis.sh" ]] && source "${PILOT_HOME}/system/helpers/analysis.sh" 2>/dev/null || true
+[[ -f "${PILOT_HOME}/system/helpers/capture.sh" ]] && source "${PILOT_HOME}/system/helpers/capture.sh" 2>/dev/null || true
+# Use only dashboard.sh (consolidated emitter library)
+[[ -f "${PILOT_HOME}/system/helpers/dashboard.sh" ]] && source "${PILOT_HOME}/system/helpers/dashboard.sh" 2>/dev/null || true
+# Source consolidated detectors
+[[ -f "${PILOT_HOME}/system/helpers/detectors.sh" ]] && source "${PILOT_HOME}/system/helpers/detectors.sh" 2>/dev/null || true
 
 # Get input JSON from STDIN (Kiro sends hook events via STDIN, not arguments)
 input_json=$(cat 2>/dev/null || echo "{}")
@@ -163,53 +164,40 @@ run_detector() {
     [[ -n "$result" ]] && echo "$result"
 }
 
-# Minimal tier: Project + Challenge detectors
+# Minimal tier: Project + Challenge detectors (already sourced via detectors.sh above)
 if [[ "$CURRENT_TIER" == "minimal" ]] || [[ "$CURRENT_TIER" == "standard" ]] || [[ "$CURRENT_TIER" == "full" ]]; then
     # Challenge detection (look for error/blocker patterns)
-    if [[ -f "${PILOT_HOME}/system/detectors/challenge-detector.sh" ]]; then
-        source "${PILOT_HOME}/system/detectors/challenge-detector.sh" 2>/dev/null || true
-        
-        # Check for debugging context
-        if capture_detect_debugging "$USER_PROMPT" 2>/dev/null; then
-            # Extract challenge type from prompt
-            CHALLENGE_TYPE=$(echo "$USER_PROMPT" | head -c 100 | tr -d '\n')
-            challenge_record_blocker "$CHALLENGE_TYPE" "$USER_PROMPT" 2>/dev/null || true
-        fi
+    # Check for debugging context
+    if capture_detect_debugging "$USER_PROMPT" 2>/dev/null; then
+        # Extract challenge type from prompt
+        CHALLENGE_TYPE=$(echo "$USER_PROMPT" | head -c 100 | tr -d '\n')
+        challenge_record_blocker "$CHALLENGE_TYPE" "$USER_PROMPT" 2>/dev/null || true
     fi
 fi
 
 # Standard tier: Add Learning, Strategy, Idea, Belief detectors
 if [[ "$CURRENT_TIER" == "standard" ]] || [[ "$CURRENT_TIER" == "full" ]]; then
-    # Idea detection
-    if [[ -f "${PILOT_HOME}/system/detectors/idea-capturer.sh" ]]; then
-        source "${PILOT_HOME}/system/detectors/idea-capturer.sh" 2>/dev/null || true
-        IDEA_RESULT=$(idea_detect "$USER_PROMPT" 2>/dev/null) || true
-        if [[ -n "$IDEA_RESULT" ]]; then
-            DETECTOR_OUTPUT="$DETECTOR_OUTPUT
+    # Idea detection (functions available from detectors.sh)
+    IDEA_RESULT=$(idea_detect "$USER_PROMPT" 2>/dev/null) || true
+    if [[ -n "$IDEA_RESULT" ]]; then
+        DETECTOR_OUTPUT="$DETECTOR_OUTPUT
 💡 Idea detected - consider adding to IDEAS.md"
-        fi
     fi
 fi
 
 # Full tier: Add Model, Narrative detectors
 if [[ "$CURRENT_TIER" == "full" ]]; then
-    # Model detection
-    if [[ -f "${PILOT_HOME}/system/detectors/model-detector.sh" ]]; then
-        source "${PILOT_HOME}/system/detectors/model-detector.sh" 2>/dev/null || true
-        MODEL_RESULT=$(model_detect "$USER_PROMPT" 2>/dev/null) || true
-    fi
+    # Model detection (functions available from detectors.sh)
+    MODEL_RESULT=$(model_detect "$USER_PROMPT" 2>/dev/null) || true
     
-    # Narrative detection
-    if [[ -f "${PILOT_HOME}/system/detectors/narrative-detector.sh" ]]; then
-        source "${PILOT_HOME}/system/detectors/narrative-detector.sh" 2>/dev/null || true
-        NARRATIVE_RESULT=$(narrative_detect "$USER_PROMPT" 2>/dev/null) || true
-        
-        # If limiting narrative detected, suggest reframe
-        if echo "$NARRATIVE_RESULT" | grep -q '"classification": "limiting"' 2>/dev/null; then
-            REFRAME=$(echo "$NARRATIVE_RESULT" | grep -o '"suggestedReframe": "[^"]*"' | sed 's/.*": "//;s/"$//')
-            [[ -n "$REFRAME" ]] && DETECTOR_OUTPUT="$DETECTOR_OUTPUT
+    # Narrative detection (functions available from detectors.sh)
+    NARRATIVE_RESULT=$(narrative_detect "$USER_PROMPT" 2>/dev/null) || true
+    
+    # If limiting narrative detected, suggest reframe
+    if echo "$NARRATIVE_RESULT" | grep -q '"classification": "limiting"' 2>/dev/null; then
+        REFRAME=$(echo "$NARRATIVE_RESULT" | grep -o '"suggestedReframe": "[^"]*"' | sed 's/.*": "//;s/"$//')
+        [[ -n "$REFRAME" ]] && DETECTOR_OUTPUT="$DETECTOR_OUTPUT
 🔄 Consider reframing: $REFRAME"
-        fi
     fi
 fi
 
