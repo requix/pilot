@@ -1,15 +1,10 @@
-# PILOT Identity & Personal Data (if accidentally copied to repo)
-.pilot/
-identity/
-learnings/
-
 # System files
 .DS_Store
-.kiro/
 
 # IDE
 .vscode/
 .idea/
+.kiro/
 
 # Logs
 *.log
