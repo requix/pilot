@@ -19,18 +19,18 @@ TOTAL_STEPS=8
 CURRENT_STEP=0
 
 progress() {
-    ((CURRENT_STEP++))
+    ((CURRENT_STEP++)) || true
     local pct=$((CURRENT_STEP * 100 / TOTAL_STEPS))
     local filled=$((pct / 5))
     local empty=$((20 - filled))
     local bar="${C}"
     for ((i=0; i<filled; i++)); do bar+="▓"; done
     for ((i=0; i<empty; i++)); do bar+="${D}░"; done
-    printf "\r  ${D}[${bar}${D}]${NC} ${W}%3d%%${NC} ${D}│${NC} $1" "$pct"
+    printf "\r  ${D}[${bar}${D}]${NC} ${W}%3d%%${NC} ${D}│${NC} %s" "$pct" "$1" >&2
 }
 
 done_progress() {
-    printf "\r  ${D}[${C}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓${D}]${NC} ${G}100%%${NC} ${D}│${NC} ${G}✓${NC} Complete          \n"
+    printf "\r  ${D}[${C}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓${D}]${NC} ${G}100%%${NC} ${D}│${NC} ${G}✓${NC} Complete          \n" >&2
 }
 
 fail() { echo -e "\n${R}✗${NC} $1"; exit 1; }
